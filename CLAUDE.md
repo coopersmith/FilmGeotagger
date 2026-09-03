@@ -12,8 +12,9 @@ batch at the end**. Findings per milestone live in `docs/`.
 M0 (write-path proof) and M1 (matching-quality harness) are complete and merged.
 M2 (alignment engine) is in progress. Done: COO-117 (`Signal` interface, `user_facts`,
 `photos_trail`, `nfc_log`) and COO-114/115 (`align/model.py`, `align/solve.py`: states,
-emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, offset).
-Next: COO-118 (reverse test, wrong-window), COO-120 (align CLI + report).
+emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, offset),
+COO-118 (`align/checks.py`: reverse test, window check, widen). Next: COO-120 (align CLI +
+report, wrong-month validation), COO-119 (outing pass).
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
@@ -37,6 +38,12 @@ prefix commands with `export PATH="/opt/homebrew/bin:$PATH"` or they fail with "
 
 Anything that needs a TTY (`gh auth login`, the Homebrew installer, interactive `sudo`) cannot be
 run from a tool call, including behind the `!` prefix. Ask the user to run it in Terminal.app.
+
+**Photos derivatives are unreadable from tool-call shells**: opening anything under
+`~/Pictures/Photos Library.photoslibrary/resources/derivatives/` fails with `Operation not
+permitted` (macOS Full Disk Access), so embedding (`scripts/embed_window.py`, `eval_m1.py` on an
+uncached window) has to be run by the user in Terminal.app. Cached vectors in `.filmgeo/vectors/`
+and `library.json` read fine, which is why everything else works from here.
 
 ### Credentials
 

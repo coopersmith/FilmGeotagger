@@ -46,6 +46,8 @@ def main() -> int:
     ap.add_argument("--tolerance", type=float, default=120,
                     help="seconds of slack on the interval test; the truth is group-level, spaced 1 s apart")
     ap.add_argument("--verbose", action="store_true", help="list every held-out frame outside its interval")
+    ap.add_argument("--shift-days", type=int, default=0,
+                    help="move the window by this many days (a deliberately wrong window; forces --mode none)")
     args = ap.parse_args()
     tol = timedelta(seconds=args.tolerance)
 
@@ -65,6 +67,10 @@ def main() -> int:
             window, how = effective_window(cs, Window(f_lo, f_hi)), "facts"
         else:
             window, how = Window.around(roll.start, roll.end, args.pad_days), f"truth+/-{args.pad_days}d"
+        if args.shift_days:
+            window = Window(window.start + timedelta(days=args.shift_days), window.end + timedelta(days=args.shift_days))
+            how += f" shifted {args.shift_days:+d}d"
+            args.mode = "none"
         pool = library.candidates(assets, window.start, window.end)
         if not pool:
             print(f"{roll.key}: empty pool, skipped")
@@ -144,6 +150,12 @@ def main() -> int:
         totals["off_ok"][0] += off_ok[0]
         totals["off_ok"][1] += off_ok[1]
         x_mass = float(np.mean([a.outside_mass for a in sol.assignments]))
+        top = sims.max(axis=1)
+        margin = top - np.median(sims, axis=1)                     # how far the best candidate stands out
+        z = (top - sims.mean(axis=1)) / sims.std(axis=1)
+        print(f"    per-frame score above null {(sol.log_score - null_score(model)) / len(roll.frames):5.2f}   "
+              f"best sim median {np.median(top):.3f}   margin over pool median {np.median(margin):.3f}   "
+              f"z median {np.median(z):.2f}   frames z>=4: {int((z >= 4).sum())}/{len(roll.frames)}")
         print(f"{roll.key}  {len(roll.frames):2} frames  window {window.start:%m-%d}..{window.end:%m-%d} ({how})  "
               f"pool {len(pool)} in {len(evs)} events  anchors given {len(given)}  held-out {len(held)}")
         print(f"    proposal {len(model.states)} states  score {sol.log_score:8.1f}  null {null_score(model):8.1f}  "
