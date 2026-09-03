@@ -48,7 +48,7 @@ def main() -> int:
 
     assets = library.load()
     rolls = [r.clean() for r in eval_set.rolls(assets)][: args.rolls]
-    nonfilm_times = np.sort(np.array([a.date.timestamp() for a in assets if not a.is_film]))
+    nonfilm_times = library.phone_times(assets)
     caches = {v: VectorCache(v) for v in ("siglip", "dinov2")}
 
     # method -> cap -> K -> [found, total]

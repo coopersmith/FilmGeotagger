@@ -16,6 +16,11 @@ building it):
   timestamp coincides with an actual photo's to the second was copied from it — and metrics that
   matter are reported on those alone. Measured share across the 2026 batch: 113 of 227 frames,
   ranging from 95% on one roll to 0% on another.
+* **A quarter of it is real, not half.** The library also holds untagged *copies* of scans at
+  the same instant as the tagged frame (115 of them). Tested against everything that merely
+  lacked the `Film` keyword, `anchored()` counted a frame anchored to its own copy: 113 frames
+  looked anchored; against phone photos only (`library.phone_times`, which excludes every
+  scan) it is **35**. M1's headline recall was measured on the 113.
 * **It contains real errors.** Roll `00007038` frame 1 is dated 38 days *after* frames 2-38 of
   the same monotone roll. Ground truth is a strong signal, not gospel; `outliers()` flags frames
   that contradict their own roll so a metric can exclude them and say so.
@@ -29,22 +34,9 @@ import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from filmgeo.photos.library import Asset
+from filmgeo.photos.library import Asset, lab_key
 
-# Lab filename conventions seen in this library. Both encode roll then frame number.
-_PATTERNS = (
-    re.compile(r"^(\d{6})_(\d{4})\.jpg$", re.I),      # Richard Photo Lab: 874466_0012.jpg
-    re.compile(r"^(\d{8})(\d{4})\.jpg$", re.I),       # Indie Film Lab:    000070400016.jpg
-)
-
-
-def _roll_and_frame(filename: str) -> tuple[str, int] | tuple[None, None]:
-    name = re.sub(r"^[0-9a-f]{8}-", "", filename or "")   # strip Photos export hash
-    name = re.sub(r"_Original\.jpg$", ".jpg", name, flags=re.I)
-    for pat in _PATTERNS:
-        if m := pat.match(name):
-            return m.group(1), int(m.group(2))
-    return None, None
+_roll_and_frame = lab_key   # the lab filename convention lives with the library adapter now
 
 
 @dataclass
@@ -91,6 +83,8 @@ class Roll:
         Hand-anchoring means copying a phone photo's EXIF, so the frame's timestamp lands on that
         photo's to the second. A derived or guessed time almost never does. `tolerance` is a
         couple of seconds because Lightroom spaces a tagged group one second apart.
+        `nonfilm_times` must come from `library.phone_times()` — anything that lets an untagged
+        scan copy through counts a frame as anchored to itself.
         """
         import numpy as np
 

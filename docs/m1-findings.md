@@ -138,3 +138,44 @@ location signal helps: nobody checks in at their own sofa. Two things do:
 * Calibration from similarity to P(match) — needs the labelled data this milestone just produced.
 * Re-measure recall at realistic window widths once window narrowing exists.
 * Choose K against verification cost, now that recall@32 shows the headroom.
+
+## Correction (3 September 2026): only a quarter of the ground truth is real, not half
+
+Found while validating M2 with real verdicts (`docs/m2-findings.md`, COO-120): Claude
+"matched" 30 of 36 anchored frames to **untagged copies of the scans themselves**. The
+library holds 115 such copies (70 from the 2026 batch), most at the identical instant to the
+tagged frame, without the `Film` keyword — so `library.candidates()` let them into the pool,
+and `Roll.anchored()`, which tested against everything that merely lacked the keyword, counted
+a frame anchored to its own copy.
+
+Against phone photos only (`library.phone_times()`, which excludes every scan by keyword, lab
+filename or scanner make), the anchored ground truth is **35 frames, not 113**. Re-measured on
+those 35 with the same cached vectors:
+
+| method | cap | @1 | @3 | @5 | @8 | @16 | @32 |
+|---|---|---|---|---|---|---|---|
+| **siglip** | 3 | 45.7 | 51.4 | 60.0 | **62.9** | 65.7 | 82.9 |
+| siglip | none | 45.7 | 51.4 | 57.1 | 57.1 | 62.9 | 62.9 |
+| dinov2 | 3 | 48.6 | 48.6 | 51.4 | 57.1 | 62.9 | 71.4 |
+| rrf | 3 | 42.9 | 45.7 | 54.3 | 57.1 | 62.9 | 82.9 |
+
+**M1's exit bar (≥80% recall@8) is not met on the honest set: 62.9%, n = 35.** The
+qualitative conclusions survive — SigLIP alone still leads at @8, the per-event cap still
+gains at every K, fusion still does not help — but the headline number above was inflated by
+frames retrieving their own duplicates, which is a trivially perfect match. With 35 frames the
+confidence interval is about ±16 points, so this is a warning more than a measurement:
+retrieval on frames that have a genuine phone counterpart finds it in the top 8 roughly
+three times in five. Per roll it ranges from 100% (four rolls) to 20-25% (`00007040`,
+`00007042`).
+
+What this changes: recall@32 of 82.9% says the counterpart is usually retrievable and ranked
+low, so K and the cap remain the levers; the M2 verification run must be repeated with the
+clean pool before its precision is trusted (every candidate list it saw held scan copies);
+and the "Still open" items above — calibration, grayscale, border trim, K against cost — are
+now load-bearing rather than polish.
+
+The verification claim above ("8 of 10 frames matched at delta exactly 0:00:00", ≥95%
+precision) falls the same way: on `00007044` those exact matches were the frame's own
+untagged copies. With the clean pool (`docs/m2-findings.md`, COO-120) Claude's accepted
+matches are within 30 minutes 54% of the time and on the right day 79%, rising to 100%
+same-day at confidence ≥0.8, on two rolls.

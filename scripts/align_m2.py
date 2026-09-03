@@ -52,7 +52,7 @@ def main() -> int:
     tol = timedelta(seconds=args.tolerance)
 
     assets = library.load()
-    nonfilm = np.array([a.date.timestamp() for a in assets if not a.is_film])
+    nonfilm = library.phone_times(assets)
     cache = VectorCache("siglip")
     rolls = [r.clean() for r in eval_set.rolls(assets)][: args.rolls]
     totals = {"held": 0, "inside": 0, "errs": [], "widths": [], "loc": {}, "gps_err": [], "off_ok": [0, 0],

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import typer
@@ -341,6 +342,107 @@ def signals(
         bounds = frame_bounds(ev.constraints, n_frames, window)
         tight = sum(1 for lo, hi in bounds if (lo, hi) != (window.start, window.end))
         console.print(f"{n_frames} frames; {tight} have bounds tighter than the window after monotone propagation")
+
+
+def _require_readable(*paths: str | None) -> None:
+    """Images inside the Photos library are unreadable from sandboxed shells (CLAUDE.md); fail
+    before spending anything rather than after 37 silent 'no verdict' lines."""
+    for p in paths:
+        if not p:
+            continue
+        try:
+            with open(p, "rb") as f:
+                f.read(16)
+        except PermissionError:
+            console.print(f"[red]cannot read[/] {p}\nmacOS denies this shell access to the Photos library. "
+                          "Run this command from Terminal.app, which has Full Disk Access.")
+            raise typer.Exit(2)
+
+
+@app.command()
+def verify(
+    roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
+    k: int = typer.Option(6, help="candidates shown to Claude per frame"),
+    limit: int = typer.Option(0, help="only the first N frames"),
+    only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
+    widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
+    model: str = typer.Option(None, help="Claude model id"),
+    alias: str = typer.Option(None, "--as", help="name the facts/verdicts/assignments files differently (a second window for one roll)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="spend the money without asking"),
+) -> None:
+    """Ask Claude which candidate, if any, shows each frame's occasion. Costs money — says how much first."""
+    from filmgeo.align import pipeline
+    from filmgeo.align.checks import new_candidates
+    from filmgeo.verify import claude
+
+    model = model or claude.DEFAULT_MODEL
+    r = pipeline.run(roll, k=k, widen=widen, alias=alias)
+    _require_readable(r.frames[0].path, r.pool[0].derivative)
+    existing = r.verdicts
+    todo = []
+    for f in r.frames[: limit or None]:
+        shown = [c.asset.uuid for c in r.candidates[f.number][:k]]
+        if only_new and f.number in existing:
+            fresh = new_candidates({f.number: existing[f.number].candidates}, {f.number: shown})[f.number]
+            if not fresh:
+                continue
+        todo.append((f, shown))
+    est = 0.035 * len(todo)   # $/frame measured in M1 on claude-opus-5 (docs/m1-findings.md)
+    console.print(f"[bold]{r.key}[/]: {len(todo)} frames x {k} candidates on {model} — about [bold]${est:.2f}[/] "
+                  f"({len(existing)} already verified)")
+    if not todo:
+        return
+    if not yes and not typer.confirm("Spend it?"):
+        raise typer.Exit(0)
+    client = claude.make_client()
+    by_uuid = {a.uuid: a for a in r.pool}
+    out: dict[int, pipeline.Verdict] = {}
+    with console.status("verifying..."):
+        for f, shown in todo:
+            refs = [claude.CandidateRef(u, by_uuid[u].derivative, by_uuid[u].date) for u in shown]
+            v = claude.verify_frame(client, f.path, refs, model=model)
+            if v is None:
+                console.print(f"  frame {f.number}: no verdict (refusal or unreadable image)")
+                continue
+            match = shown[v.match - 1] if v.match and 1 <= v.match <= len(shown) else None
+            out[f.number] = pipeline.Verdict(shown, match, v.confidence, v.evidence, v.clues.model_dump())
+            console.print(f"  frame {f.number}: {'match ' + by_uuid[match].date.strftime('%m-%d %H:%M') if match else 'none':22} "
+                          f"{v.confidence:.2f}  {v.evidence[:70]}")
+    p = pipeline.save_verdicts(r.key, out, {"roll": r.key, "model": model, "k": k})
+    console.print(f"{len(out)} verdicts -> {p}")
+
+
+@app.command()
+def align(
+    roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
+    pad_days: int = typer.Option(2, help="fallback padding around a hand-tagged roll's true range"),
+    widen: bool = typer.Option(False, help="widen the window by a month each side"),
+    alias: str = typer.Option(None, "--as", help="name the facts/verdicts/assignments files differently (a second window for one roll)"),
+    out: Path = typer.Option(Path("reports"), help="where the HTML report goes"),
+) -> None:
+    """Solve a roll: time, interval, location and confidence per frame -> JSON + HTML report."""
+    from filmgeo.align import pipeline, report as arep
+
+    r = pipeline.run(roll, pad_days=pad_days, widen=widen, alias=alias)
+    sol = r.solution
+    table = Table(title=f"{r.key}: {r.window.start:%Y-%m-%d} .. {r.window.end:%Y-%m-%d} ({r.window_source})")
+    for col in ("#", "source", "time", "interval", "conf", "location", "truth"):
+        table.add_column(col)
+    for f, a in zip(r.frames, sol.assignments):
+        loc = f"{a.lat:.4f},{a.lon:.4f}" if a.location == "ok" else f"ambiguous ({len(a.clusters)})" if a.location == "ambiguous" else "-"
+        truth = ""
+        if f.truth:
+            inside = a.t_lo - timedelta(minutes=2) <= f.truth <= a.t_hi + timedelta(minutes=2)
+            truth = f"{f.truth:%m-%d %H:%M} {'ok' if inside else 'OUT'}"
+        table.add_row(str(f.number), a.source, f"{a.time:%m-%d %H:%M}", arep.interval_text(a), f"{a.confidence:.2f}", loc, truth)
+    console.print(table)
+    console.print(f"anchored {sol.anchored}/{r.n_frames}, verified {len(r.verdicts)} · window check: "
+                  + ("[red]doubtful[/] — " if r.check.doubtful else "") + r.check.reason
+                  + (" · [red]possibly reverse-wound[/]" if r.reverse.suspect else ""))
+    console.print("best days: " + ", ".join(f"{d:%a %-d %b} {m:.1f}" for d, m in r.check.best_days))
+    jp = pipeline.save(r)
+    hp = arep.write(out / f"align_{r.key}.html", r)
+    console.print(f"wrote {jp} and {hp}")
 
 
 if __name__ == "__main__":

@@ -262,3 +262,149 @@ which is all that needs verifying.
 
 The deliberately-wrong-month validation on real verdicts is COO-120's, and needs embeddings
 for the shifted windows, which have to be built from Terminal.app (see CLAUDE.md).
+
+## COO-120 — `filmgeo align`, `filmgeo verify`, the HTML report, and validation
+
+Landed 3 September 2026. `src/filmgeo/align/pipeline.py`, `align/report.py`, two CLI
+commands, 3 more tests (47 in the suite).
+
+### The pipeline
+
+`filmgeo align <roll>` resolves a scan folder or a hand-tagged key, takes the window from
+the facts file (or, for an eval roll with no facts, the true range ±2 days, and says so),
+builds the pool and events, embeds the frames if needed, retrieves top-K from cached
+vectors, reads verdicts from `.filmgeo/verdicts/<roll>.json`, builds the constraints and
+trail from every signal, solves, places, runs the reverse and window checks, and writes
+`.filmgeo/assignments/<roll>.json` plus `reports/align_<roll>.html`. The JSON is the
+`assignments` table PLAN.md describes, one document per roll; M3's API reads and re-solves
+from the same inputs.
+
+`filmgeo verify <roll>` shows each frame's top-K to Claude and stores the verdict, the
+candidates shown, the confidence, the evidence sentence and the clues. It prints the cost
+($0.035 a frame, measured in M1) and asks before spending; `--only-new` after `--widen`
+verifies just the candidates that widening surfaced, which is how a doubtful window is
+re-run cheaply.
+
+The report carries the window timeline (events as bars, each frame's interval as a line and
+its assigned time as a tick, coloured by confidence, the hand-tagged truth as a dot when
+known), then a row per frame: source badge, local time with offset, "between … and …",
+confidence bar, the pin or the offered clusters, Claude's evidence, and the truth with its
+delta and whether it fell inside the interval.
+
+### Validation without verification
+
+Similarity only, no verdicts, no API spend:
+
+| roll | window | frames | truth inside interval | median interval width |
+|---|---|---|---|---|
+| `00007044` | facts: all of April | 10 | 10 / 10 | 19 days |
+| `00007037` | true range ±2 d (22-day roll) | 37 | 37 / 37 | 8 days |
+
+Both meet the exit criterion's second half. The intervals are wide because nothing is
+anchored — this is the honest floor. The one frame on `00007044` with a fact ("frame 3 on
+4 April") came out pinned to the Montague Street trail centroid, which is where the roll's
+hand tags put it.
+
+### Validation with verification — pending two things only the user can do
+
+The exit criterion's first half ("anchored frames exact") and the deliberately-wrong-month
+run both need real verdicts, which cost about $0.035 a frame, and the wrong-month run needs
+embeddings for the shifted window, which have to be built from Terminal.app because Photos
+derivatives are unreadable from tool-call shells. Commands to run are in CLAUDE.md. Once
+both exist, `filmgeo verify` then `filmgeo align` on `00007037` (multi-day) and on
+`00007044` with its facts window moved to May will finish this issue.
+
+## COO-120, continued — real verdicts, and what they found in the ground truth
+
+Run 3 September 2026 by the user from Terminal.app (`filmgeo verify` on `00007037`,
+`00007044` and `00007044` under a deliberately wrong May window; $2.00).
+
+### Claude matched the frames to themselves
+
+The verdicts looked superb — 26 of 37 and 10 of 10 anchored, 23 and 9 of them exact to the
+second — until the anchor photos were inspected: **30 of the 36 anchors were untagged copies
+of the scans**, sitting in the Photos library at the same instant as the tagged frame, without
+the `Film` keyword. The library holds 115 such copies. Three things had let them through:
+`library.candidates()` filtered on the keyword alone; `Roll.anchored()` tested against every
+asset lacking it, so it counted a frame anchored to its own copy; and the trail included them.
+
+Fixed with `Asset.is_scan` — keyword, lab filename (`000070440001.jpg`, `348542_0012.jpg`,
+with Photos' `_Original` and dated-export prefixes), or scanner make (`NORITSU KOKI`) — used
+by the candidate pool, the trail, and `library.phone_times()` for the anchored test.
+
+### Everything above, re-measured on the clean set
+
+The anchored ground truth falls from 113 frames to **35** (`m1-findings.md` carries the M1
+correction: recall@8 is 62.9% there, not 91.2%, and the exit bar is not met). The M2
+oracle measurements on the 35:
+
+| anchors given | held-out | truth inside interval | median abs. error | median width | location ok | truth is top cluster |
+|---|---|---|---|---|---|---|
+| every other anchored frame | 16 | 16 / 16 | 0.0 h | 3.3 h | 11 / 16 | 3 / 4 |
+| first and last only | 20 | 20 / 20 | 13.2 h | 56 h | 15 / 20 | 5 / 5 |
+| none | 35 | 34 / 35 | 49.8 h | 96 h | 0 / 35 | 33 / 35 |
+
+The solver's guarantees hold: intervals contain the truth, anchored frames are exact,
+offsets are right on every frame. The no-anchor error rises from 1.2 h to 50 h, which is the
+honest number — the earlier one was similarity finding the frame's own copy.
+
+### The verified runs, with the copies discarded
+
+| run | candidates shown that were scan copies | anchored | anchors within 30 min | interpolated inside interval | window check |
+|---|---|---|---|---|---|
+| `00007037`, true range | 58 / 222 | 3 / 37 | 2 | 32 / 34 | doubtful |
+| `00007044`, April facts | 22 / 60 | 1 / 10 | 0 | 9 / 9 | doubtful |
+| `00007044`, wrong May window | 0 / 60 | 1 / 10 | 0 (50 days off) | 0 / 9 | doubtful |
+
+The first two are not a fair test of verification: a quarter to a third of every candidate
+list Claude saw was the frame's own copy, which it (correctly) chose, and those verdicts are
+now discarded. They need re-running with the clean pool, about $1.65, before precision can be
+stated. The May run *is* fair — no copies reached it — and it is the wrong-window result the
+issue asked for: Claude abstained on 8 of 10 (against 0 of 10 under April), matched 2 at a
+mean confidence of 0.51, and the one anchor that survived the threshold is seven weeks from
+the truth. Verification separates the windows where similarity could not.
+
+The doubtful-window rule gained a count floor from this: on a 10-frame roll one lucky match
+is 10%, so "fewer than max(2, 10% of frames) anchored" is the test.
+
+### Re-run with the clean pool ($1.65) — verification precision on real anchors
+
+| run | accepted | ≤5 min | ≤30 min | ≤2 h | same day | accepted at conf ≥0.8: same day |
+|---|---|---|---|---|---|---|
+| `00007037` | 20 / 37 | 11 | 13 | 16 | 17 | 12 / 12 |
+| `00007044` | 8 / 10 | 1 | 2 | 5 | 5 | 5 / 5 |
+
+So of 28 accepted matches, 15 are within 30 minutes and 22 on the same day; the six wrong-day
+accepts all carry confidence 0.38-0.70, and every accept at ≥0.8 is on the right day. M1's
+"≥95% of accepted matches correct" was measured with the copies in the pool and is retracted
+with the rest of M1's headline; the honest number at a 30-minute tolerance is **54%**, or 71%
+at confidence ≥0.8. These are two rolls, and the domestic-repetition failure M1 described is
+exactly what the wrong-day accepts look like.
+
+**The solver absorbed every wrong-day verdict.** After alignment, 13 of 37 and 4 of 10 frames
+are anchored, and all 17 sit on the right day: the monotone constraint dropped each wrong-day
+accept because it contradicted its neighbours, which is PLAN.md risk 2's mitigation doing its
+job on real data. Interpolated frames: 23 of 24 and 5 of 6 contain the truth.
+
+### "Anchored frames exact" fails — at retrieval, and for a reason that changes the design
+
+Scored on the nine frames the user genuinely anchored (five on `00007037`, four on
+`00007044`): the true photo was in the shortlist of six Claude saw on **0 of 9**. Claude then
+chose a same-session photo 2-6 minutes off on six of them (confidence 0.88-0.94) and a wrong
+day on three (0.45-0.70), which the solver rejected. After alignment all nine are on the right
+day, four within 30 minutes, none exact.
+
+Two conclusions. First, retrieval on genuinely anchored frames is worse than the 62.9% clean
+recall@8 suggests once K is 6 and the roll is hard: these nine are in the two rolls where M1's
+per-roll recall was 50% and 100% — but the *exact* photo was never in the six. Second, and
+more useful: **verification anchors a frame to the occasion, not the instant.** Claude's
+question is "same occasion, within an hour", and its answer is right to within minutes when it
+is right at all; the solver then writes the chosen photo's second as the frame's time and a
+zero-width interval, which is more precision than the evidence carries and is why nine
+anchored frames "miss" the truth by five minutes. An anchored frame's interval should be the
+anchor's event span (or ±30 min if the event is a single photo), with the photo's time still
+the written value. Filed as a follow-up; it is a small change in `solve._intervals`.
+
+COO-120's exit criterion therefore reads: interpolated intervals contain the truth (28 of 30
+on the two rolls); anchored frames are exact when the exact photo reaches Claude, which on
+the honest ground truth it currently does not.

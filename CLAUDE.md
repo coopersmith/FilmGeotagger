@@ -13,20 +13,30 @@ M0 (write-path proof) and M1 (matching-quality harness) are complete and merged.
 M2 (alignment engine) is in progress. Done: COO-117 (`Signal` interface, `user_facts`,
 `photos_trail`, `nfc_log`) and COO-114/115 (`align/model.py`, `align/solve.py`: states,
 emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, offset),
-COO-118 (`align/checks.py`: reverse test, window check, widen). Next: COO-120 (align CLI +
-report, wrong-month validation), COO-119 (outing pass).
+COO-118 (`align/checks.py`: reverse test, window check, widen), COO-120 (`filmgeo align`,
+`filmgeo verify`, HTML report, validated with real verdicts). M2's alignment engine is
+complete. Two things the validation established, both in `docs/m2-findings.md`: verification
+anchors a frame to the *occasion* (minutes off), not the instant, so anchored intervals should
+be the event span (follow-up issue); and retrieval on the honest ground truth is 62.9%
+recall@8 with the exact photo reaching Claude's top 6 on 0 of 9 real anchors, so M1's open
+items (calibration, K, grayscale, border trim) are the next lever. COO-119 (outing pass) is
+the remaining M2 issue.
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
 
-1. **Half the hand-tagged ground truth is guessed.** For frames between two known anchors the
-   user picked a plausible date at random. Scoring against those numbers understated recall@8 by
-   12 points and made one roll look like a model failure when it was 87% guesses. Use
-   `Roll.anchored()` and score on real anchors only.
-2. **SigLIP alone is the default.** It beat DINOv2 and both fusion methods at every K. An earlier
-   conclusion favouring reciprocal rank fusion was drawn on the contaminated set and is retracted.
+1. **Only a quarter of the hand-tagged ground truth is real.** For frames between two known
+   anchors the user picked a plausible date at random, and the library also holds 115 untagged
+   *copies* of scans at the tagged frame's instant. Use `Roll.anchored()` against
+   `library.phone_times()` (35 frames in the 2026 batch, not 113) and score on those only.
+   The M1 headline (91.2% recall@8) was measured with the copies in the pool; the honest
+   number is 62.9%, below the exit bar. See the correction at the end of `docs/m1-findings.md`.
+2. **SigLIP alone is the default.** It still leads DINOv2 and both fusion methods at @8 on the
+   clean set. An earlier conclusion favouring reciprocal rank fusion is retracted.
+3. **`Asset.is_scan`, never `is_film`, is the filter for candidates and trail.** Keyword, lab
+   filename or scanner make; the keyword alone lets the copies through.
 
 `docs/m0-findings.md` carries the exiftool and Photos/Lightroom constraints that bind M4.
 
@@ -66,6 +76,9 @@ uv run filmgeo rolls                 # hand-tagged rolls available as ground tru
 uv run filmgeo report <roll-key>     # contact sheet -> reports/ (uses the facts window if set)
 uv run filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   # user facts -> .filmgeo/facts/
 uv run filmgeo signals <roll>        # trail points + constraints from every adapter
+uv run --extra embed filmgeo align <roll>            # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
+uv run --extra embed --extra verify filmgeo verify <roll>   # Claude verdicts -> .filmgeo/verdicts/; costs ~$0.035/frame, asks first
+uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)
 uv run pytest                        # unit tests (needs `uv sync --extra dev`)
 
 uv run --extra embed python scripts/eval_m1.py --rolls 9
