@@ -262,3 +262,54 @@ which is all that needs verifying.
 
 The deliberately-wrong-month validation on real verdicts is COO-120's, and needs embeddings
 for the shifted windows, which have to be built from Terminal.app (see CLAUDE.md).
+
+## COO-120 — `filmgeo align`, `filmgeo verify`, the HTML report, and validation
+
+Landed 3 September 2026. `src/filmgeo/align/pipeline.py`, `align/report.py`, two CLI
+commands, 3 more tests (47 in the suite).
+
+### The pipeline
+
+`filmgeo align <roll>` resolves a scan folder or a hand-tagged key, takes the window from
+the facts file (or, for an eval roll with no facts, the true range ±2 days, and says so),
+builds the pool and events, embeds the frames if needed, retrieves top-K from cached
+vectors, reads verdicts from `.filmgeo/verdicts/<roll>.json`, builds the constraints and
+trail from every signal, solves, places, runs the reverse and window checks, and writes
+`.filmgeo/assignments/<roll>.json` plus `reports/align_<roll>.html`. The JSON is the
+`assignments` table PLAN.md describes, one document per roll; M3's API reads and re-solves
+from the same inputs.
+
+`filmgeo verify <roll>` shows each frame's top-K to Claude and stores the verdict, the
+candidates shown, the confidence, the evidence sentence and the clues. It prints the cost
+($0.035 a frame, measured in M1) and asks before spending; `--only-new` after `--widen`
+verifies just the candidates that widening surfaced, which is how a doubtful window is
+re-run cheaply.
+
+The report carries the window timeline (events as bars, each frame's interval as a line and
+its assigned time as a tick, coloured by confidence, the hand-tagged truth as a dot when
+known), then a row per frame: source badge, local time with offset, "between … and …",
+confidence bar, the pin or the offered clusters, Claude's evidence, and the truth with its
+delta and whether it fell inside the interval.
+
+### Validation without verification
+
+Similarity only, no verdicts, no API spend:
+
+| roll | window | frames | truth inside interval | median interval width |
+|---|---|---|---|---|
+| `00007044` | facts: all of April | 10 | 10 / 10 | 19 days |
+| `00007037` | true range ±2 d (22-day roll) | 37 | 37 / 37 | 8 days |
+
+Both meet the exit criterion's second half. The intervals are wide because nothing is
+anchored — this is the honest floor. The one frame on `00007044` with a fact ("frame 3 on
+4 April") came out pinned to the Montague Street trail centroid, which is where the roll's
+hand tags put it.
+
+### Validation with verification — pending two things only the user can do
+
+The exit criterion's first half ("anchored frames exact") and the deliberately-wrong-month
+run both need real verdicts, which cost about $0.035 a frame, and the wrong-month run needs
+embeddings for the shifted window, which have to be built from Terminal.app because Photos
+derivatives are unreadable from tool-call shells. Commands to run are in CLAUDE.md. Once
+both exist, `filmgeo verify` then `filmgeo align` on `00007037` (multi-day) and on
+`00007044` with its facts window moved to May will finish this issue.

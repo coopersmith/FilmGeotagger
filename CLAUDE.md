@@ -13,8 +13,10 @@ M0 (write-path proof) and M1 (matching-quality harness) are complete and merged.
 M2 (alignment engine) is in progress. Done: COO-117 (`Signal` interface, `user_facts`,
 `photos_trail`, `nfc_log`) and COO-114/115 (`align/model.py`, `align/solve.py`: states,
 emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, offset),
-COO-118 (`align/checks.py`: reverse test, window check, widen). Next: COO-120 (align CLI +
-report, wrong-month validation), COO-119 (outing pass).
+COO-118 (`align/checks.py`: reverse test, window check, widen). COO-120 (`filmgeo align`,
+`filmgeo verify`, HTML report) is built and validated without verification; its wrong-month
+run with real verdicts is pending (needs shifted-window embeddings from Terminal.app and ~$3
+of API). Next: that run, then COO-119 (outing pass).
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
@@ -66,6 +68,9 @@ uv run filmgeo rolls                 # hand-tagged rolls available as ground tru
 uv run filmgeo report <roll-key>     # contact sheet -> reports/ (uses the facts window if set)
 uv run filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   # user facts -> .filmgeo/facts/
 uv run filmgeo signals <roll>        # trail points + constraints from every adapter
+uv run --extra embed filmgeo align <roll>            # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
+uv run --extra embed --extra verify filmgeo verify <roll>   # Claude verdicts -> .filmgeo/verdicts/; costs ~$0.035/frame, asks first
+uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)
 uv run pytest                        # unit tests (needs `uv sync --extra dev`)
 
 uv run --extra embed python scripts/eval_m1.py --rolls 9
