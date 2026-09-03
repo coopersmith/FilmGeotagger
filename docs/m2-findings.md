@@ -146,3 +146,49 @@ wrong-window half of COO-118 still needs the deliberately-wrong-month run.
 One roll (`00007044`) ran under its facts window, the whole of April with 2,428 photos in 182
 events, and gave 371 states: solving takes well under a second, so the month-wide windows
 users will actually type are not a performance concern.
+
+## COO-116 — location and offset derivation (`geo.py`)
+
+Landed 3 September 2026. `src/filmgeo/geo.py`, 8 unit tests; `scripts/align_m2.py` now scores
+location and offset as well as time.
+
+### Rules
+
+An anchored frame takes its photo's GPS and offset exactly. For every other frame the trail
+points inside its interval decide: within 300 m of their centroid, that centroid is the pin
+(`ok`, source `trail`); spread wider but the frame lies between two anchors within 2 km of
+each other, the pin is interpolated linearly in time between them (`ok`, `interpolated`);
+otherwise the frame is `ambiguous`, the distinct clusters (greedy, 300 m radius, biggest
+first, carrying any NFC label) are kept for the UI, and **no pin is written**. No trail and no
+close anchors is `none`. The offset comes from the nearest trail point in time; if points in
+the interval disagree, the frame is flagged `offset_disputed` and the nearest still wins.
+
+### Measured on the nine hand-tagged rolls
+
+Held-out anchored frames, the user's hand-copied GPS as the answer, phone-photo trail only:
+
+| anchors given | ok | ambiguous | none | truth among offered clusters | truth is the top cluster | offset right |
+|---|---|---|---|---|---|---|
+| every other anchored frame | 24 / 54 | 28 | 2 | 28 / 28 | 22 / 28 | 54 / 54 |
+| first and last only | 0 / 97 | 97 | 0 | 96 / 96 | 90 / 96 | 97 / 97 |
+| none | 0 / 113 | 113 | 0 | 112 / 112 | 105 / 112 | 113 / 113 |
+
+Three things follow.
+
+**The offset is a solved problem on this data.** Every held-out frame got the right UTC
+offset in every mode, because the nearest phone photo in time always carried it. Travel days
+are not in the 2026 batch; `offset_disputed` exists for them and is unexercised.
+
+**A pin is only ever written when it is right.** The 24 `ok` frames sit at 0.00 km median
+error (they are interpolations between anchors seconds apart, or tight trail centroids), and
+the derivation refused to guess on the other 30. With only the ends anchored, or nothing,
+*every* frame is ambiguous: a week-wide interval spans many places, and the design says so
+rather than picking one.
+
+**"Ambiguous" is a four-way pick, and the first option is usually right.** The true place was
+within 500 m of an offered cluster on 236 of 236 ambiguous frames, and it was the biggest
+cluster on 79-94% of them, with a median of four clusters offered. That reshapes the M3 UI:
+an ambiguous frame is not a blank map but a short list with a strong default, and "confirm
+top cluster" will resolve most of them in one keystroke. It also says the trail is
+informative even without anchors — the user photographs where they are — so a cluster
+prior for the solver's gap states is worth trying later.

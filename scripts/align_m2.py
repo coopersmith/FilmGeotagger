@@ -29,8 +29,11 @@ from filmgeo import eval_set, events as ev
 from filmgeo.align.model import Anchor, build_model
 from filmgeo.align.solve import null_score, solve
 from filmgeo.embed.cache import VectorCache
+from filmgeo.events import haversine_m
+from filmgeo.geo import place
 from filmgeo.photos import library
 from filmgeo.signals.base import Window, effective_window
+from filmgeo.signals.photos_trail import PhotosTrail
 from filmgeo.signals.user_facts import RollFacts, UserFacts
 
 
@@ -50,7 +53,9 @@ def main() -> int:
     nonfilm = np.array([a.date.timestamp() for a in assets if not a.is_film])
     cache = VectorCache("siglip")
     rolls = [r.clean() for r in eval_set.rolls(assets)][: args.rolls]
-    totals = {"held": 0, "inside": 0, "errs": [], "widths": []}
+    totals = {"held": 0, "inside": 0, "errs": [], "widths": [], "loc": {}, "gps_err": [], "off_ok": [0, 0],
+              "amb": [0, 0, 0], "n_clusters": []}   # ambiguous frames with truth: total, truth in any cluster, in the top one
+    trail = PhotosTrail(assets)
 
     for roll in rolls:
         facts = RollFacts.load(roll.key)
@@ -94,7 +99,7 @@ def main() -> int:
             for i in given
         ]
         model = build_model(window, evs, len(roll.frames), anchors, sims=sims, event_ids=ids, constraints=cs)
-        sol = solve(model)
+        sol = place(solve(model), trail.trail_points(window))
         held = [i for i in truth_idx if i not in given]
         inside = errs = None
         if held:
@@ -115,6 +120,29 @@ def main() -> int:
             totals["inside"] += inside
             totals["errs"] += errs
             totals["widths"] += widths
+        # Location and offset on held-out frames whose hand-tagged GPS exists.
+        loc = {}
+        gps_err = []
+        off_ok = [0, 0]
+        for i in held:
+            a, f = sol.assignments[i], roll.frames[i]
+            loc[a.location] = loc.get(a.location, 0) + 1
+            if a.location == "ok" and f.has_location:
+                gps_err.append(haversine_m((a.lat, a.lon), (f.lat, f.lon)))
+            if a.location == "ambiguous" and f.has_location and a.clusters:
+                hits = [haversine_m((c.lat, c.lon), (f.lat, f.lon)) <= 500 for c in a.clusters]
+                totals["amb"][0] += 1
+                totals["amb"][1] += any(hits)
+                totals["amb"][2] += hits[0]
+                totals["n_clusters"].append(len(a.clusters))
+            if a.tzoffset is not None and f.tzoffset is not None:
+                off_ok[1] += 1
+                off_ok[0] += a.tzoffset == f.tzoffset
+        for k, v in loc.items():
+            totals["loc"][k] = totals["loc"].get(k, 0) + v
+        totals["gps_err"] += gps_err
+        totals["off_ok"][0] += off_ok[0]
+        totals["off_ok"][1] += off_ok[1]
         x_mass = float(np.mean([a.outside_mass for a in sol.assignments]))
         print(f"{roll.key}  {len(roll.frames):2} frames  window {window.start:%m-%d}..{window.end:%m-%d} ({how})  "
               f"pool {len(pool)} in {len(evs)} events  anchors given {len(given)}  held-out {len(held)}")
@@ -123,11 +151,22 @@ def main() -> int:
         if held:
             print(f"    truth inside 90% interval {inside}/{len(held)}   median |err| {statistics.median(errs):6.1f} h   "
                   f"median width {statistics.median(widths):6.1f} h")
+            print(f"    location {loc}   median GPS error where ok {statistics.median(gps_err)/1000:.2f} km ({len(gps_err)})   "
+                  f"offset right {off_ok[0]}/{off_ok[1]}" if gps_err else f"    location {loc}   offset right {off_ok[0]}/{off_ok[1]}")
     if totals["held"]:
         print("=" * 70)
         print(f"mode={args.mode}: truth inside interval {totals['inside']}/{totals['held']} = "
               f"{100*totals['inside']/totals['held']:.1f}%   median |err| {statistics.median(totals['errs']):.1f} h   "
               f"median width {statistics.median(totals['widths']):.1f} h")
+        n_loc = sum(totals["loc"].values())
+        print("location: " + "  ".join(f"{k} {v}/{n_loc}" for k, v in sorted(totals["loc"].items()))
+              + (f"   median GPS error where ok {statistics.median(totals['gps_err'])/1000:.2f} km, "
+                 f"90th pct {np.percentile(totals['gps_err'], 90)/1000:.1f} km ({len(totals['gps_err'])} frames)" if totals["gps_err"] else "")
+              + f"   offset right {totals['off_ok'][0]}/{totals['off_ok'][1]}")
+        amb = totals["amb"]
+        if amb[0]:
+            print(f"ambiguous frames with a true pin: {amb[0]}; truth within 500 m of some offered cluster {amb[1]}/{amb[0]}, "
+                  f"of the top cluster {amb[2]}/{amb[0]}; median clusters offered {statistics.median(totals['n_clusters']):.0f}")
     return 0
 
 
