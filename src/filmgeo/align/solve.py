@@ -19,7 +19,7 @@ spacing so scan order survives in Photos and Lightroom (PLAN.md). Uncertainty li
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -45,6 +45,11 @@ class Assignment:
     lat: float | None = None
     lon: float | None = None
     event: int | None = None
+    # Filled by geo.place(): where the frame was, and how sure that is.
+    location: str = "none"                  # ok | ambiguous | none
+    location_source: str | None = None      # anchor | trail | interpolated
+    clusters: list = field(default_factory=list)   # geo.Cluster, for the UI when ambiguous
+    offset_disputed: bool = False           # trail points in the interval disagree on offset
 
 
 @dataclass
