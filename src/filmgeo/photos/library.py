@@ -8,6 +8,7 @@ the engine needs per asset is pulled once and cached; callers then filter the ca
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,26 @@ from pathlib import Path
 from filmgeo.config import DATA_DIR
 
 CACHE = DATA_DIR / "library.json"
+
+# Lab filename conventions seen in this library; both encode roll then frame number.
+LAB_FILENAME = (
+    re.compile(r"^(\d{6})_(\d{4})\.jpe?g$", re.I),      # Richard Photo Lab: 874466_0012.jpg
+    re.compile(r"^(\d{8})(\d{4})\.jpe?g$", re.I),       # Indie Film Lab:    000070400016.jpg
+)
+# Scanner bodies that leave Make/Model in the file. Measured 3 Sept 2026: 248 tagged film
+# assets and 81 of the 115 untagged scan copies carry NORITSU KOKI / EZ Controller.
+SCANNER_MAKES = {"NORITSU KOKI"}
+
+
+def lab_key(filename: str) -> tuple[str, int] | tuple[None, None]:
+    """(roll, frame) from a lab filename, tolerating Photos' export hash and `_Original`."""
+    name = re.sub(r"^[0-9a-f]{8}-", "", filename or "")
+    name = re.sub(r"^\d{8}-", "", name)                       # 20200820-354581_0006
+    name = re.sub(r"_Original(\.jpe?g)$", r"\1", name, flags=re.I)
+    for pat in LAB_FILENAME:
+        if m := pat.match(name):
+            return m.group(1), int(m.group(2))
+    return None, None
 
 
 @dataclass
@@ -32,8 +53,20 @@ class Asset:
 
     @property
     def is_film(self) -> bool:
-        """A scan the user has already hand-tagged. Ground truth, and never a candidate."""
+        """A scan the user has already hand-tagged with the `Film` keyword: the ground truth."""
         return any(k.lower() == "film" for k in self.keywords)
+
+    @property
+    def is_scan(self) -> bool:
+        """Any film scan at all, tagged or not — never a candidate, never a trail point.
+
+        The library holds 115 untagged copies of scans (measured 3 Sept 2026), most at the same
+        instant as the tagged frame. Filtering on the keyword alone let them into the candidate
+        pool, where a frame "matched" its own duplicate: that inflated the anchored ground truth
+        from 35 frames to 113 and M1's recall with it. A scan is recognised by the keyword, by
+        a lab filename, or by a scanner make.
+        """
+        return self.is_film or lab_key(self.filename)[0] is not None or (self.make or "") in SCANNER_MAKES
 
     @property
     def has_location(self) -> bool:
@@ -110,10 +143,18 @@ def load(path: Path = CACHE) -> list[Asset]:
 def candidates(assets: list[Asset], start: datetime, end: datetime, pad_days: int = 0) -> list[Asset]:
     """Assets usable as visual match candidates in a window.
 
-    Film scans are excluded: they live in the same library, and a roll must never be matched
-    against itself or against another roll's frames. Assets without a local derivative stay out
-    of the visual pool but remain usable as time and GPS trail points (PLAN.md).
+    Film scans are excluded, tagged or not (`is_scan`): they live in the same library, and a
+    roll must never be matched against itself, its own untagged copy, or another roll's frames.
+    Assets without a local derivative stay out of the visual pool but remain usable as time and
+    GPS trail points (PLAN.md).
     """
     lo = start - timedelta(days=pad_days)
     hi = end + timedelta(days=pad_days)
-    return [a for a in assets if lo <= a.date <= hi and not a.is_film and a.derivative]
+    return [a for a in assets if lo <= a.date <= hi and not a.is_scan and a.derivative]
+
+
+def phone_times(assets: list[Asset]) -> "np.ndarray":
+    """Sorted timestamps of everything that is not a scan — what `Roll.anchored()` tests against."""
+    import numpy as np
+
+    return np.sort(np.array([a.date.timestamp() for a in assets if not a.is_scan]))

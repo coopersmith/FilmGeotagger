@@ -125,15 +125,21 @@ def window_check(
     solution: Solution,
     n_verified: int | None = None,
     min_anchored_fraction: float = 0.1,
+    min_anchors: int = 2,
     max_outside_mass: float = 0.25,
 ) -> WindowCheck:
+    """Doubtful when verification ran and fewer than max(`min_anchors`, fraction × frames) anchored.
+
+    The count floor matters on 10-frame 6x7 rolls: one lucky match is 10%, and the wrong-month
+    run of `00007044` produced exactly one (docs/m2-findings.md).
+    """
     outside = float(np.mean([a.outside_mass for a in solution.assignments]))
     per_frame = (solution.log_score - null_score(model)) / max(1, model.n_frames)
     days = best_days(model, solution)
     anchored = solution.anchored
     if n_verified:
-        frac = anchored / model.n_frames
-        if frac < min_anchored_fraction:
+        need = max(min_anchors, min_anchored_fraction * model.n_frames)
+        if anchored < need:
             return WindowCheck(anchored, model.n_frames, n_verified, per_frame, outside, days, True,
                                f"only {anchored} of {model.n_frames} frames anchored after verifying {n_verified}")
         reason = f"{anchored} of {model.n_frames} frames anchored"

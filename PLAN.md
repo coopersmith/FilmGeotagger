@@ -167,8 +167,10 @@ they often picked a plausible date at random ("I knew frame 29 and the next roll
 guessed in between"). A guessed timestamp is not evidence: it penalises a correct match and
 rewards a lucky one on a densely photographed day. An anchored frame is detectable — hand-anchoring
 means copying a phone photo's EXIF, so the timestamp coincides with that photo's to the second.
-Across the 2026 batch that is 113 of 227 frames, ranging from 95% of one roll to 0% of another.
-`Roll.anchored()` recovers them; every headline metric is measured on those alone.
+Across the 2026 batch that is **35 of 227 frames** once untagged copies of the scans themselves
+are excluded from the comparison (the library holds 115 such copies; an earlier count of 113
+was inflated by frames "anchored" to their own duplicate). `Roll.anchored()` against
+`library.phone_times()` recovers them; every headline metric is measured on those alone.
 
 Scoring on all frames instead understated recall@8 by 12 points and made one roll look like a
 model failure when it was 87% guesses.

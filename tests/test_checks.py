@@ -77,3 +77,9 @@ def test_widen_and_new_candidates():
     w = widen(WINDOW)
     assert w.start == at(1) - timedelta(days=31) and w.end == at(31) + timedelta(days=31)
     assert new_candidates({0: ["a", "b"]}, {0: ["b", "c"], 1: ["d"]}) == {0: ["c"], 1: ["d"]}
+
+
+def test_window_check_one_anchor_on_a_short_roll_is_doubtful():
+    one = RollInputs(WINDOW, EVENTS, 10, anchors((0, 1, 2))[:1])
+    m = one.build()
+    assert window_check(m, solve(m), n_verified=10).doubtful

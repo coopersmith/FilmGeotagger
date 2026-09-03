@@ -313,3 +313,56 @@ embeddings for the shifted window, which have to be built from Terminal.app beca
 derivatives are unreadable from tool-call shells. Commands to run are in CLAUDE.md. Once
 both exist, `filmgeo verify` then `filmgeo align` on `00007037` (multi-day) and on
 `00007044` with its facts window moved to May will finish this issue.
+
+## COO-120, continued — real verdicts, and what they found in the ground truth
+
+Run 3 September 2026 by the user from Terminal.app (`filmgeo verify` on `00007037`,
+`00007044` and `00007044` under a deliberately wrong May window; $2.00).
+
+### Claude matched the frames to themselves
+
+The verdicts looked superb — 26 of 37 and 10 of 10 anchored, 23 and 9 of them exact to the
+second — until the anchor photos were inspected: **30 of the 36 anchors were untagged copies
+of the scans**, sitting in the Photos library at the same instant as the tagged frame, without
+the `Film` keyword. The library holds 115 such copies. Three things had let them through:
+`library.candidates()` filtered on the keyword alone; `Roll.anchored()` tested against every
+asset lacking it, so it counted a frame anchored to its own copy; and the trail included them.
+
+Fixed with `Asset.is_scan` — keyword, lab filename (`000070440001.jpg`, `348542_0012.jpg`,
+with Photos' `_Original` and dated-export prefixes), or scanner make (`NORITSU KOKI`) — used
+by the candidate pool, the trail, and `library.phone_times()` for the anchored test.
+
+### Everything above, re-measured on the clean set
+
+The anchored ground truth falls from 113 frames to **35** (`m1-findings.md` carries the M1
+correction: recall@8 is 62.9% there, not 91.2%, and the exit bar is not met). The M2
+oracle measurements on the 35:
+
+| anchors given | held-out | truth inside interval | median abs. error | median width | location ok | truth is top cluster |
+|---|---|---|---|---|---|---|
+| every other anchored frame | 16 | 16 / 16 | 0.0 h | 3.3 h | 11 / 16 | 3 / 4 |
+| first and last only | 20 | 20 / 20 | 13.2 h | 56 h | 15 / 20 | 5 / 5 |
+| none | 35 | 34 / 35 | 49.8 h | 96 h | 0 / 35 | 33 / 35 |
+
+The solver's guarantees hold: intervals contain the truth, anchored frames are exact,
+offsets are right on every frame. The no-anchor error rises from 1.2 h to 50 h, which is the
+honest number — the earlier one was similarity finding the frame's own copy.
+
+### The verified runs, with the copies discarded
+
+| run | candidates shown that were scan copies | anchored | anchors within 30 min | interpolated inside interval | window check |
+|---|---|---|---|---|---|
+| `00007037`, true range | 58 / 222 | 3 / 37 | 2 | 32 / 34 | doubtful |
+| `00007044`, April facts | 22 / 60 | 1 / 10 | 0 | 9 / 9 | doubtful |
+| `00007044`, wrong May window | 0 / 60 | 1 / 10 | 0 (50 days off) | 0 / 9 | see below |
+
+The first two are not a fair test of verification: a quarter to a third of every candidate
+list Claude saw was the frame's own copy, which it (correctly) chose, and those verdicts are
+now discarded. They need re-running with the clean pool, about $1.65, before precision can be
+stated. The May run *is* fair — no copies reached it — and it is the wrong-window result the
+issue asked for: Claude abstained on 8 of 10 (against 0 of 10 under April), matched 2 at a
+mean confidence of 0.51, and the one anchor that survived the threshold is seven weeks from
+the truth. Verification separates the windows where similarity could not.
+
+The doubtful-window rule gained a count floor from this: on a 10-frame roll one lucky match
+is 10%, so "fewer than max(2, 10% of frames) anchored" is the test.
