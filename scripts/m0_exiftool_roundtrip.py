@@ -8,8 +8,8 @@ Options:
     --datetime "YYYY:MM:DD HH:MM:SS"   capture time to write (default 2026:07:14 15:32:10)
     --offset   "+HH:MM"                capture UTC offset (default +01:00)
     --camera   "Make Model"            camera identity (default "Contax T2"); "" writes none
-    --film     "Portra 400"            film stock, written as a keyword; "" writes none
-    --iso      400                     speed the roll was shot at, written to EXIF:ISO
+    --film     "Kodak Portra 400"      film stock, written as a plain keyword; "" writes none
+    --lab      "Richard Photo Lab"     lab name, written as a plain keyword; "" writes none
 
 Copies each input into scripts/out/, writes date + offset + GPS + camera + provenance keywords
 with exiftool, reads them back with `exiftool -j -n -G1`, and prints PASS/FAIL per file.
@@ -49,20 +49,23 @@ DEFAULT_OFFSET = "+01:00"
 # body. The roll's camera name is already a per-roll user fact in PLAN.md; writing it into
 # EXIF:Make/Model makes that filtering work. Proven here so M4 can rely on it.
 DEFAULT_CAMERA = "Contax T2"
-# Film stock is a per-roll user fact with nowhere canonical to live in EXIF. The speed goes to
-# EXIF:ISO (which Photos and Lightroom both display, and which is otherwise blank on a scan);
-# the stock name goes to a `filmgeo:film:` keyword so it stays searchable and the clear command
-# can remove it with the rest of our provenance. If the roll was pushed or pulled, --iso is the
-# speed it was actually shot at, which is what EXIF:ISO means.
-DEFAULT_FILM = "Portra 400"
-DEFAULT_ISO = 400
+# Film stock, lab and camera are per-roll user facts. They are written as plain keywords, in the
+# convention the user already tags film by hand with ("Film", "Leica M7", "Kodak Portra 800",
+# "Indie Film Lab"), so generated tags merge with the existing ones instead of sitting beside
+# them in a private namespace. The `filmgeo:` prefix is reserved for machine provenance, which is
+# what `clear` removes; descriptive keywords are the user's and are left alone.
+DEFAULT_FILM = "Kodak Portra 400"
+DEFAULT_LAB = "Richard Photo Lab"
+FILM_KEYWORD = "Film"
 
 LAT, LON = 38.7223, -9.1393
-BASE_KEYWORDS = ["filmgeo:anchored", "filmgeo:conf:high"]
+PROVENANCE_KEYWORDS = ["filmgeo:anchored", "filmgeo:conf:high"]
 
 
-def keywords(film: str) -> list[str]:
-    return [*BASE_KEYWORDS, f"filmgeo:film:{film.strip()}"] if film.strip() else list(BASE_KEYWORDS)
+def keywords(camera: str, film: str, lab: str) -> list[str]:
+    """Descriptive keywords in the user's own convention, then our machine provenance."""
+    descriptive = [FILM_KEYWORD, *(v.strip() for v in (camera, film, lab) if v.strip())]
+    return [*descriptive, *PROVENANCE_KEYWORDS]
 
 
 def split_camera(camera: str) -> tuple[str, str]:
@@ -71,7 +74,7 @@ def split_camera(camera: str) -> tuple[str, str]:
     return (make, model.strip()) if model.strip() else ("", make)
 
 
-def write_args(local: str, offset: str, camera: str, film: str, iso: int | None) -> list[str]:
+def write_args(local: str, offset: str, camera: str, film: str, lab: str) -> list[str]:
     xmp_stamp = f"{local.replace(':', '-', 2).replace(' ', 'T')}{offset}"
     args = [
         f"-EXIF:DateTimeOriginal={local}",
@@ -88,11 +91,9 @@ def write_args(local: str, offset: str, camera: str, film: str, iso: int | None)
         "-EXIF:GPSLongitudeRef=W",
         f"-XMP-exif:GPSLatitude={LAT}",
         f"-XMP-exif:GPSLongitude={LON}",
-        *[f"-XMP-dc:Subject+={k}" for k in keywords(film)],
-        *[f"-IPTC:Keywords+={k}" for k in keywords(film)],
+        *[f"-XMP-dc:Subject+={k}" for k in keywords(camera, film, lab)],
+        *[f"-IPTC:Keywords+={k}" for k in keywords(camera, film, lab)],
     ]
-    if iso:
-        args.append(f"-EXIF:ISO={iso}")
     make, model = split_camera(camera)
     if make:
         args.append(f"-EXIF:Make={make}")
@@ -107,7 +108,7 @@ FILEMODIFY_ARGS = ["-FileModifyDate<DateTimeOriginal"]
 LIST_CHECKS = ["XMP-dc:Subject", "IPTC:Keywords"]
 
 
-def checks(local: str, offset: str, camera: str, iso: int | None) -> dict:
+def checks(local: str, offset: str, camera: str) -> dict:
     """Keys are -G1 group names, values as read back with -n (numeric) -j (json)."""
     stamp = f"{local}{offset}"
     expected = {
@@ -134,8 +135,6 @@ def checks(local: str, offset: str, camera: str, iso: int | None) -> dict:
         expected["IFD0:Make"] = make
     if model:
         expected["IFD0:Model"] = model
-    if iso:
-        expected["ExifIFD:ISO"] = iso
     return expected
 
 
@@ -184,21 +183,21 @@ def check_restore(tagged: Path, source: Path, problems: list[str]) -> None:
             problems.append("restore_original did not reproduce the source bytes")
 
 
-def tag_one(src: Path, local: str, offset: str, camera: str, film: str, iso: int | None) -> list[str]:
+def tag_one(src: Path, local: str, offset: str, camera: str, film: str, lab: str) -> list[str]:
     dst = OUT / src.name
     backup = dst.with_name(f"{dst.name}_original")
     backup.unlink(missing_ok=True)  # exiftool refuses to overwrite a stale backup
     shutil.copy2(src, dst)
 
     problems: list[str] = []
-    for args in (write_args(local, offset, camera, film, iso), FILEMODIFY_ARGS):
+    for args in (write_args(local, offset, camera, film, lab), FILEMODIFY_ARGS):
         _, err = exiftool([*args, str(dst)])
         for line in err.splitlines():
             if line.strip():
                 problems.append(f"exiftool: {line.strip()}")
 
     tags = read(dst)
-    for key, want in checks(local, offset, camera, iso).items():
+    for key, want in checks(local, offset, camera).items():
         got = tags.get(key)
         if not close(got, want):
             problems.append(f"{key}: want {want!r}, got {got!r}")
@@ -207,7 +206,7 @@ def tag_one(src: Path, local: str, offset: str, camera: str, film: str, iso: int
         values = tags.get(key) or []
         if isinstance(values, str):
             values = [values]
-        for k in keywords(film):
+        for k in keywords(camera, film, lab):
             if k not in values:
                 problems.append(f"{key} missing {k}")
 
@@ -225,7 +224,7 @@ def main() -> int:
     ap.add_argument("--offset", default=DEFAULT_OFFSET)
     ap.add_argument("--camera", default=DEFAULT_CAMERA)
     ap.add_argument("--film", default=DEFAULT_FILM)
-    ap.add_argument("--iso", type=int, default=DEFAULT_ISO)
+    ap.add_argument("--lab", default=DEFAULT_LAB)
     ap.add_argument("scans", nargs="*")
     args = ap.parse_args()
 
@@ -239,11 +238,11 @@ def main() -> int:
     OUT.mkdir(exist_ok=True)
     print(
         f"writing {args.local}{args.offset}  camera={args.camera or '(none)'}  "
-        f"film={args.film or '(none)'}  iso={args.iso or '(none)'}\n"
+        f"film={args.film or '(none)'}  lab={args.lab or '(none)'}\n"
     )
     failures = 0
     for src in map(Path, args.scans):
-        problems = tag_one(src, args.local, args.offset, args.camera, args.film, args.iso)
+        problems = tag_one(src, args.local, args.offset, args.camera, args.film, args.lab)
         failures += bool(problems)
         print(f"{'PASS' if not problems else 'FAIL'}  {OUT / src.name}")
         for p in problems:

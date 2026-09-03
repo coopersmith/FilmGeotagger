@@ -230,18 +230,35 @@ exposure fields.
 
 | Fact | Written as | Why there |
 |---|---|---|
-| Camera | `EXIF:Make` + `EXIF:Model`, split on the first space | Makes a batch filterable by body in Photos and Lightroom |
-| Film speed | `EXIF:ISO` | The one exposure field a scan can honestly fill; both apps display it |
-| Film stock | keyword `filmgeo:film:<name>` | No canonical EXIF home; keyword keeps it searchable and lets `clear` remove it |
+| Camera | `EXIF:Make` + `EXIF:Model`, split on the first space, **and** a plain keyword | Make/Model makes a batch filterable by body; the keyword matches how the user already tags |
+| Film stock | plain keyword (`Kodak Portra 800`) | No canonical EXIF home, and the user already tags stock this way |
+| Lab | plain keyword (`Richard Photo Lab`) | Same |
+| — | plain keyword `Film` | The user's existing blanket tag for film frames |
 
-Pushed or pulled rolls record the speed the roll was *shot* at, which is what `EXIF:ISO` means,
-not box speed. `--camera ""`, `--film ""` and `--iso 0` each write nothing, so the fields stay
-optional. Verified round-tripping on JPG and 16-bit TIFF.
+**Keywords follow the user's existing convention, not a private namespace.** A sample of their
+hand-tagged frames carries `Film`, `Leica M7`, `Kodak Portra 800`, `Portra 800`, `Indie Film Lab`
+— plain and unprefixed. Generated keywords therefore merge with the tags already in the library
+instead of sitting beside them. The `filmgeo:` prefix stays reserved for machine provenance
+(`anchored`, `conf:*`, `location-unknown`), which is what `clear` removes; descriptive keywords
+are the user's and are left alone.
+
+**No `EXIF:ISO`.** An earlier pass wrote the shot-at speed there, on the reasoning that it is the
+one exposure field a scan can honestly fill. Dropped: the stock keyword already carries the
+speed, and the rest of the exposure block stays blank anyway, so a lone ISO is more noise than
+signal. `--camera ""`, `--film ""` and `--lab ""` each write nothing, so every field is optional.
+Verified round-tripping on JPG and 16-bit TIFF.
 
 The user's bodies are **Contax T2**, **Leica M7** (35 mm) and **Mamiya 7II** (120, 6×7), which is
 what the review UI should offer.
 
-One bug worth remembering: the first attempt wrote `EXIF:ISO=2026-08-22T09:15:44+01:00`, because
+### Labs differ on what EXIF they leave behind
+
+A previously hand-tagged frame from **Indie Film Lab** carries `Make`/`Model` = `EZ Controller`
+— the Noritsu scanner software. The Richard Photo Lab batch examined above carries no EXIF IFD at
+all. So "scans have no EXIF" is lab-specific, not universal: ingest must handle a scanner-populated
+`Make`/`Model`, and the writer overwrites it with the actual camera, which is the desired outcome.
+
+One bug worth remembering from the ISO attempt: it wrote `EXIF:ISO=2026-08-22T09:15:44+01:00`, because
 the new `iso` parameter shadowed a local variable already holding the ISO-8601 *timestamp*.
 exiftool reported `Warning: Not an integer for IFD0:ISO` and exited 0 — caught only because the
 verifier now surfaces stderr. That is the second time in M0 that surfacing exiftool's warnings

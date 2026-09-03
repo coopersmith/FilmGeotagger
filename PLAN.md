@@ -58,7 +58,7 @@ MVP scope: user constraints + phone-photo anchors + phone-photo trail + outing s
 ### User-supplied facts (UI and CLI)
 
 - Per batch: rough window.
-- Per roll: known start/end dates, camera name, film stock and shot-at ISO, free-text notes.
+- Per roll: known start/end dates, camera name, film stock, lab, free-text notes.
 - Per frame: known time or date, known place (map pin or place name), "same day as frame N", "unknown, skip".
 - These become hard constraints (locked states) in the alignment, recorded as `filmgeo:manual` provenance. Adding one re-solves the roll in milliseconds and tightens neighbouring frames.
 
@@ -139,11 +139,12 @@ One page per roll, three panes.
   `XMP-photoshop:DateCreated`. Lightroom strips `XMP-exif:DateTimeOriginal` (deprecated in favour
   of `photoshop:DateCreated`) and resets `FileModifyDate` whenever it writes a file, so neither
   can be trusted on re-read. Both are still written; neither is load-bearing. Measured in M0.
-- Film stock: the speed the roll was shot at goes to `EXIF:ISO` — the one exposure field a
-  scan can legitimately fill, and both Photos and Lightroom display it. The stock name goes
-  to a `filmgeo:film:<name>` keyword so it stays searchable and `clear` removes it with the
-  rest of our provenance. Pushed and pulled rolls give the shot-at speed, not box speed.
-  Asked once per roll alongside the camera. Verified in M0.
+- Descriptive keywords in the user's existing hand-tagging convention — plain and unprefixed,
+  so generated tags merge with the tags already in the library rather than forming a private
+  namespace: `Film`, the camera (`Leica M7`), the film stock (`Kodak Portra 800`) and the lab
+  (`Richard Photo Lab`). Stock and lab are asked once per roll alongside the camera. No
+  `EXIF:ISO`: film speed is carried by the stock keyword, and a scan's exposure fields are left
+  blank rather than filled with a value the frame cannot vouch for. Verified in M0.
 - Provenance keywords (`XMP-dc:Subject` + `IPTC:Keywords`): `filmgeo:anchored|interpolated|manual`, `filmgeo:conf:high|medium|low`, `filmgeo:location-unknown` when GPS is left blank. Clear command removes them.
 - Sidecar `<roll>/filmgeo.json`: per frame anchor uuid, interval, confidence, decision source, Claude reasoning, write timestamp. Reopenable.
 - Safety: no `-overwrite_original` (exiftool keeps `name.jpg_original`), plus a `.filmgeo_backup/` copy of the roll before the first write; read back with `exiftool -j` and diff; record in `writes`. Verify 16-bit TIFF round-trips in M0.

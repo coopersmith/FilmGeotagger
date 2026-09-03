@@ -25,7 +25,7 @@ uv run --with numpy --with tifffile python scripts/m0_make_tiff_fixture.py \
   scripts/fixtures/874478_0001.jpg
 
 uv run python scripts/m0_exiftool_roundtrip.py \
-  --camera "Mamiya 7II" --film "Portra 400" --iso 400 \
+  --camera "Mamiya 7II" --film "Kodak Portra 400" --lab "Richard Photo Lab" \
   scripts/fixtures/874478_0001.jpg \
   scripts/fixtures/874466_0012.jpg \
   scripts/fixtures/874478_0001_16bit.tif
