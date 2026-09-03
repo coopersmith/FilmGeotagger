@@ -13,11 +13,14 @@ M0 (write-path proof) and M1 (matching-quality harness) are complete and merged.
 M2 (alignment engine) is in progress. Done: COO-117 (`Signal` interface, `user_facts`,
 `photos_trail`, `nfc_log`) and COO-114/115 (`align/model.py`, `align/solve.py`: states,
 emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, offset),
-COO-118 (`align/checks.py`: reverse test, window check, widen). COO-120 (`filmgeo align`,
-`filmgeo verify`, HTML report) is built; its wrong-month run is done and separates the
-windows, but the two right-window verification runs were contaminated by scan copies and
-need re-running (~$1.65, from Terminal.app). Retrieval recall on the honest ground truth is
-62.9%, so M1's open items (calibration, K, grayscale, border trim) are back on the table.
+COO-118 (`align/checks.py`: reverse test, window check, widen), COO-120 (`filmgeo align`,
+`filmgeo verify`, HTML report, validated with real verdicts). M2's alignment engine is
+complete. Two things the validation established, both in `docs/m2-findings.md`: verification
+anchors a frame to the *occasion* (minutes off), not the instant, so anchored intervals should
+be the event span (follow-up issue); and retrieval on the honest ground truth is 62.9%
+recall@8 with the exact photo reaching Claude's top 6 on 0 of 9 real anchors, so M1's open
+items (calibration, K, grayscale, border trim) are the next lever. COO-119 (outing pass) is
+the remaining M2 issue.
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 

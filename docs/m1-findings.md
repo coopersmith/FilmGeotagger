@@ -173,3 +173,9 @@ low, so K and the cap remain the levers; the M2 verification run must be repeate
 clean pool before its precision is trusted (every candidate list it saw held scan copies);
 and the "Still open" items above — calibration, grayscale, border trim, K against cost — are
 now load-bearing rather than polish.
+
+The verification claim above ("8 of 10 frames matched at delta exactly 0:00:00", ≥95%
+precision) falls the same way: on `00007044` those exact matches were the frame's own
+untagged copies. With the clean pool (`docs/m2-findings.md`, COO-120) Claude's accepted
+matches are within 30 minutes 54% of the time and on the right day 79%, rising to 100%
+same-day at confidence ≥0.8, on two rolls.

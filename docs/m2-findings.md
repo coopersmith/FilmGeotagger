@@ -366,3 +366,45 @@ the truth. Verification separates the windows where similarity could not.
 
 The doubtful-window rule gained a count floor from this: on a 10-frame roll one lucky match
 is 10%, so "fewer than max(2, 10% of frames) anchored" is the test.
+
+### Re-run with the clean pool ($1.65) — verification precision on real anchors
+
+| run | accepted | ≤5 min | ≤30 min | ≤2 h | same day | accepted at conf ≥0.8: same day |
+|---|---|---|---|---|---|---|
+| `00007037` | 20 / 37 | 11 | 13 | 16 | 17 | 12 / 12 |
+| `00007044` | 8 / 10 | 1 | 2 | 5 | 5 | 5 / 5 |
+
+So of 28 accepted matches, 15 are within 30 minutes and 22 on the same day; the six wrong-day
+accepts all carry confidence 0.38-0.70, and every accept at ≥0.8 is on the right day. M1's
+"≥95% of accepted matches correct" was measured with the copies in the pool and is retracted
+with the rest of M1's headline; the honest number at a 30-minute tolerance is **54%**, or 71%
+at confidence ≥0.8. These are two rolls, and the domestic-repetition failure M1 described is
+exactly what the wrong-day accepts look like.
+
+**The solver absorbed every wrong-day verdict.** After alignment, 13 of 37 and 4 of 10 frames
+are anchored, and all 17 sit on the right day: the monotone constraint dropped each wrong-day
+accept because it contradicted its neighbours, which is PLAN.md risk 2's mitigation doing its
+job on real data. Interpolated frames: 23 of 24 and 5 of 6 contain the truth.
+
+### "Anchored frames exact" fails — at retrieval, and for a reason that changes the design
+
+Scored on the nine frames the user genuinely anchored (five on `00007037`, four on
+`00007044`): the true photo was in the shortlist of six Claude saw on **0 of 9**. Claude then
+chose a same-session photo 2-6 minutes off on six of them (confidence 0.88-0.94) and a wrong
+day on three (0.45-0.70), which the solver rejected. After alignment all nine are on the right
+day, four within 30 minutes, none exact.
+
+Two conclusions. First, retrieval on genuinely anchored frames is worse than the 62.9% clean
+recall@8 suggests once K is 6 and the roll is hard: these nine are in the two rolls where M1's
+per-roll recall was 50% and 100% — but the *exact* photo was never in the six. Second, and
+more useful: **verification anchors a frame to the occasion, not the instant.** Claude's
+question is "same occasion, within an hour", and its answer is right to within minutes when it
+is right at all; the solver then writes the chosen photo's second as the frame's time and a
+zero-width interval, which is more precision than the evidence carries and is why nine
+anchored frames "miss" the truth by five minutes. An anchored frame's interval should be the
+anchor's event span (or ±30 min if the event is a single photo), with the photo's time still
+the written value. Filed as a follow-up; it is a small change in `solve._intervals`.
+
+COO-120's exit criterion therefore reads: interpolated intervals contain the truth (28 of 30
+on the two rolls); anchored frames are exact when the exact photo reaches Claude, which on
+the honest ground truth it currently does not.
