@@ -8,3 +8,4 @@ dist/
 # M0 scratch output
 scripts/out/
 scripts/fixtures/
+.filmgeo/
