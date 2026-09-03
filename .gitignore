@@ -9,3 +9,4 @@ dist/
 scripts/out/
 scripts/fixtures/
 .filmgeo/
+.env

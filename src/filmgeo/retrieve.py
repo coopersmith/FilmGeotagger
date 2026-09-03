@@ -27,11 +27,32 @@ def zscore(x: np.ndarray) -> np.ndarray:
     return (x - mu) / sd if sd > 1e-9 else np.zeros_like(x)
 
 
-def fuse(sims: dict[str, np.ndarray], weights: dict[str, float] | None = None) -> np.ndarray:
-    """Weighted sum of per-model z-scores. Equal weights until M1 measures otherwise."""
+def zfuse(sims: dict[str, np.ndarray], weights: dict[str, float] | None = None) -> np.ndarray:
+    """Weighted sum of per-model z-scores. Kept for comparison; `rrf` is the default."""
     weights = weights or {k: 1.0 for k in sims}
     total = sum(weights[k] for k in sims)
     return sum(zscore(v) * weights[k] for k, v in sims.items()) / total
+
+
+def rrf(sims: dict[str, np.ndarray], k: float = 60.0) -> np.ndarray:
+    """Reciprocal rank fusion — the default, measured in M1.
+
+    z-scoring equalises variance but not tail shape. SigLIP and DINOv2 similarity distributions
+    are peaked differently, so whichever model's top candidate sits further out in sigma
+    dominates the sum regardless of which is actually right — which is why z-fusion scored at or
+    below the better single model on every roll (77.0 SigLIP / 74.8 DINOv2 / 74.8 z-fused).
+    RRF discards magnitude and combines positions, and beat both single models: 79.1% recall@8.
+    """
+    total = np.zeros(len(next(iter(sims.values()))))
+    for s in sims.values():
+        ranks = np.empty(len(s), dtype=np.int64)
+        ranks[np.argsort(-s)] = np.arange(len(s))
+        total += 1.0 / (k + ranks + 1)
+    return total
+
+
+def fuse(sims: dict[str, np.ndarray], weights: dict[str, float] | None = None) -> np.ndarray:
+    return rrf(sims) if len(sims) > 1 else next(iter(sims.values()))
 
 
 def top_k(
@@ -46,7 +67,9 @@ def top_k(
     """Fused top-k for one frame, capped per event.
 
     The cap exists because one heavily photographed scene would otherwise fill every slot and
-    crowd out the other days a frame might belong to (PLAN.md).
+    crowd out the other days a frame might belong to (PLAN.md). Measured in M1, it is worth more
+    than the choice of model: recall@32 is 92.8% with the cap and 83.5% without, and every method
+    gains from it at every K.
     """
     sims = {name: pool_vecs[name] @ frame_vecs[name] for name in frame_vecs}
     fused = fuse(sims, weights)

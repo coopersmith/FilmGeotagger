@@ -164,6 +164,22 @@ def request_params(frame_path: str, candidates: list[CandidateRef], model: str =
     }
 
 
+def make_client():
+    """Anthropic client, with the workspace header identity-linked keys require.
+
+    An identity-linked API key rejects every request without `anthropic-workspace-id`, and the
+    header takes the workspace ID (`wrkspc_...`), not its name. Set ANTHROPIC_WORKSPACE_ID
+    alongside ANTHROPIC_API_KEY; both live in a gitignored `.env`.
+    """
+    import os
+
+    import anthropic
+
+    workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    headers = {"anthropic-workspace-id": workspace} if workspace else None
+    return anthropic.Anthropic(default_headers=headers)
+
+
 def verify_frame(client, frame_path: str, candidates: list[CandidateRef], model: str = DEFAULT_MODEL) -> Verdict | None:
     """One interactive verification. Returns None if no image could be read."""
     params = request_params(frame_path, candidates, model)
