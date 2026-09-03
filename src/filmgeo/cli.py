@@ -67,7 +67,7 @@ def rolls(limit: int = 20) -> None:
 
 
 @app.command()
-def report(roll_key: str, pad_days: int = 2, k: int = 8, out: Path = Path(".filmgeo/report")) -> None:
+def report(roll_key: str, pad_days: int = 2, k: int = 8, out: Path = Path("reports")) -> None:
     """Write the contact sheet for one hand-tagged roll, from cached vectors."""
     import numpy as np
 

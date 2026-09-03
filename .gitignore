@@ -10,3 +10,4 @@ scripts/out/
 scripts/fixtures/
 .filmgeo/
 .env
+reports/
