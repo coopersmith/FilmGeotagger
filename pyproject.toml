@@ -20,6 +20,10 @@ embed = [
     "timm>=1.0.29",
     "torch>=2.14.0",
 ]
+verify = [
+    "anthropic>=1.3.0",
+    "pydantic>=2.13.5",
+]
 
 [project.scripts]
 filmgeo = "filmgeo.cli:app"
