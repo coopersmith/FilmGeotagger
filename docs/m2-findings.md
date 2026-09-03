@@ -354,7 +354,7 @@ honest number — the earlier one was similarity finding the frame's own copy.
 |---|---|---|---|---|---|
 | `00007037`, true range | 58 / 222 | 3 / 37 | 2 | 32 / 34 | doubtful |
 | `00007044`, April facts | 22 / 60 | 1 / 10 | 0 | 9 / 9 | doubtful |
-| `00007044`, wrong May window | 0 / 60 | 1 / 10 | 0 (50 days off) | 0 / 9 | see below |
+| `00007044`, wrong May window | 0 / 60 | 1 / 10 | 0 (50 days off) | 0 / 9 | doubtful |
 
 The first two are not a fair test of verification: a quarter to a third of every candidate
 list Claude saw was the frame's own copy, which it (correctly) chose, and those verdicts are
