@@ -182,7 +182,18 @@ Hand-tag 3 scans (JPG + TIFF) with exiftool using the exact tag set above; impor
 CLI: `index → ingest → retrieve → verify → report` producing a static HTML contact sheet (frame, top-K, verdicts). Run on 2–3 hand-tagged rolls. Measure recall@K and precision@1 for embedding-only, precision of Claude's accepted matches, derivative availability. Decide SigLIP vs DINOv2 vs both, grayscale, K, model tier; fit calibration. Exit: ≥80% of frames that have a phone counterpart found in top-8; ≥95% of accepted matches correct.
 
 ### M2 — Alignment engine (CLI, JSON + HTML report)
-Events, states, emissions, Viterbi, forward-backward, intervals, location/offset derivation, reverse test, wrong-window detection, `Signal` interface with `photos_trail`, `nfc_log`, `user_facts`. Validate on a multi-day roll and a deliberately wrong-month window. Exit: anchored frames exact; interpolated intervals contain the true time on hand-tagged rolls.
+**Roll facts come first.** M1 measured window width at ~9 points of recall, and the cheapest,
+most accurate source of a window is the user: they know a roll was shot "in April" or "on the
+Portugal trip" in seconds. Every alternative considered — dating a person's appearance against
+the library's face-tagged timeline, inferring from the lab order — resolves only to a week or a
+month, which is exactly what the user supplies for free. So `user_facts` is a CLI input from the
+start of M2 (`--from/--to`, per-roll camera, film, notes, per-frame known dates), not a UI
+feature deferred to M3. The UI later edits the same facts; it does not introduce them.
+
+Then: events, states, emissions, Viterbi, forward-backward, intervals, location/offset derivation,
+reverse test, wrong-window detection, `Signal` interface with `photos_trail`, `nfc_log`,
+`user_facts`. Validate on a multi-day roll and a deliberately wrong-month window. Exit: anchored
+frames exact; interpolated intervals contain the true time on hand-tagged rolls.
 
 ### M3 — Review UI
 FastAPI + React as above: overrides, locking, live re-solve, roll facts input, batch confirm. No write yet.
