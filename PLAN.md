@@ -145,6 +145,12 @@ One page per roll, three panes.
   (`Richard Photo Lab`). Stock and lab are asked once per roll alongside the camera. No
   `EXIF:ISO`: film speed is carried by the stock keyword, and a scan's exposure fields are left
   blank rather than filled with a value the frame cannot vouch for. Verified in M0.
+- Film stock is written **once, in full: `<Manufacturer> <Stock> <Speed>`** — `Kodak Portra 800`,
+  not `Portra 800`, and never both. The user's library currently has some frames tagged both ways
+  because the choice was made by hand each time; the tool always emits the full form so the tag is
+  durable and one keyword means one stock. M3's roll form offers the known stocks as a picklist
+  rather than free text, which is where the consistency actually comes from. The camera keyword
+  follows the same rule (`Mamiya 7II`, matching `EXIF:Make` + `EXIF:Model`).
 - Provenance keywords (`XMP-dc:Subject` + `IPTC:Keywords`): `filmgeo:anchored|interpolated|manual`, `filmgeo:conf:high|medium|low`, `filmgeo:location-unknown` when GPS is left blank. Clear command removes them.
 - Sidecar `<roll>/filmgeo.json`: per frame anchor uuid, interval, confidence, decision source, Claude reasoning, write timestamp. Reopenable.
 - Safety: no `-overwrite_original` (exiftool keeps `name.jpg_original`), plus a `.filmgeo_backup/` copy of the roll before the first write; read back with `exiftool -j` and diff; record in `writes`. Verify 16-bit TIFF round-trips in M0.

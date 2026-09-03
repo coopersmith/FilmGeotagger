@@ -238,7 +238,13 @@ exposure fields.
 **Keywords follow the user's existing convention, not a private namespace.** A sample of their
 hand-tagged frames carries `Film`, `Leica M7`, `Kodak Portra 800`, `Portra 800`, `Indie Film Lab`
 — plain and unprefixed. Generated keywords therefore merge with the tags already in the library
-instead of sitting beside them. The `filmgeo:` prefix stays reserved for machine provenance
+instead of sitting beside them.
+
+The duplicate `Kodak Portra 800` / `Portra 800` in that sample is not a Lightroom parent/child
+hierarchy — it is a per-frame human decision that went both ways over time. The tool settles it:
+**stock is always written once, in full, as `<Manufacturer> <Stock> <Speed>`.** Consistency comes
+from M3 offering the known stocks as a picklist, not from the writer trying to validate free text
+(`CineStill 800T` and `Ilford HP5 Plus 400` both defeat any simple rule). The `filmgeo:` prefix stays reserved for machine provenance
 (`anchored`, `conf:*`, `location-unknown`), which is what `clear` removes; descriptive keywords
 are the user's and are left alone.
 
