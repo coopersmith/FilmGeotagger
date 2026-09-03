@@ -7,3 +7,4 @@ dist/
 .DS_Store
 # M0 scratch output
 scripts/out/
+scripts/fixtures/

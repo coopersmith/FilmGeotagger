@@ -58,7 +58,7 @@ MVP scope: user constraints + phone-photo anchors + phone-photo trail + outing s
 ### User-supplied facts (UI and CLI)
 
 - Per batch: rough window.
-- Per roll: known start/end dates, camera name, free-text notes.
+- Per roll: known start/end dates, camera name, film stock and shot-at ISO, free-text notes.
 - Per frame: known time or date, known place (map pin or place name), "same day as frame N", "unknown, skip".
 - These become hard constraints (locked states) in the alignment, recorded as `filmgeo:manual` provenance. Adding one re-solves the roll in milliseconds and tightens neighbouring frames.
 
@@ -131,6 +131,19 @@ One page per roll, three panes.
 
 - Time: `EXIF:DateTimeOriginal`, `EXIF:CreateDate` (capture time in both by default), `EXIF:OffsetTimeOriginal`, `OffsetTimeDigitized`, `OffsetTime`; `XMP-exif:DateTimeOriginal`, `XMP-photoshop:DateCreated`, `XMP-xmp:CreateDate` with offset. `FileModifyDate` set to the capture time as a fallback for Photos.
 - Location: `GPSLatitude/Ref`, `GPSLongitude/Ref`, `GPSAltitude/Ref` when known, mirrored to `XMP-exif`.
+- Camera: `EXIF:Make` and `EXIF:Model` from the roll's camera name, so Photos and Lightroom
+  can filter a batch by body — impossible for film scans otherwise. The name is already a
+  per-roll user fact; the UI offers the known bodies (Contax T2, Leica M7, Mamiya 7II) and the
+  writer splits the name into make/model. Verified in M0.
+- Verification and re-read must key off `EXIF:DateTimeOriginal` + `EXIF:OffsetTimeOriginal` +
+  `XMP-photoshop:DateCreated`. Lightroom strips `XMP-exif:DateTimeOriginal` (deprecated in favour
+  of `photoshop:DateCreated`) and resets `FileModifyDate` whenever it writes a file, so neither
+  can be trusted on re-read. Both are still written; neither is load-bearing. Measured in M0.
+- Film stock: the speed the roll was shot at goes to `EXIF:ISO` — the one exposure field a
+  scan can legitimately fill, and both Photos and Lightroom display it. The stock name goes
+  to a `filmgeo:film:<name>` keyword so it stays searchable and `clear` removes it with the
+  rest of our provenance. Pushed and pulled rolls give the shot-at speed, not box speed.
+  Asked once per roll alongside the camera. Verified in M0.
 - Provenance keywords (`XMP-dc:Subject` + `IPTC:Keywords`): `filmgeo:anchored|interpolated|manual`, `filmgeo:conf:high|medium|low`, `filmgeo:location-unknown` when GPS is left blank. Clear command removes them.
 - Sidecar `<roll>/filmgeo.json`: per frame anchor uuid, interval, confidence, decision source, Claude reasoning, write timestamp. Reopenable.
 - Safety: no `-overwrite_original` (exiftool keeps `name.jpg_original`), plus a `.filmgeo_backup/` copy of the roll before the first write; read back with `exiftool -j` and diff; record in `writes`. Verify 16-bit TIFF round-trips in M0.
