@@ -176,9 +176,14 @@ def trail_for(assets: list[Asset], window: Window, facts: RollFacts) -> tuple[li
     return evidence.trail, counts
 
 
-def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, assets: list[Asset] | None = None) -> RollRun:
+def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, assets: list[Asset] | None = None,
+        alias: str | None = None) -> RollRun:
+    """`alias` names the facts, verdicts and assignments files instead of the roll key — for
+    running one roll under a second window (the wrong-month validation) without clobbering."""
     assets = assets or library.load()
     key, frames, truth = resolve_frames(roll, assets)
+    if alias:
+        key = alias
     n = len(frames)
     facts = RollFacts.load(key)
     constraints = UserFacts(facts).constraints()

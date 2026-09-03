@@ -344,6 +344,21 @@ def signals(
         console.print(f"{n_frames} frames; {tight} have bounds tighter than the window after monotone propagation")
 
 
+def _require_readable(*paths: str | None) -> None:
+    """Images inside the Photos library are unreadable from sandboxed shells (CLAUDE.md); fail
+    before spending anything rather than after 37 silent 'no verdict' lines."""
+    for p in paths:
+        if not p:
+            continue
+        try:
+            with open(p, "rb") as f:
+                f.read(16)
+        except PermissionError:
+            console.print(f"[red]cannot read[/] {p}\nmacOS denies this shell access to the Photos library. "
+                          "Run this command from Terminal.app, which has Full Disk Access.")
+            raise typer.Exit(2)
+
+
 @app.command()
 def verify(
     roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
@@ -352,6 +367,7 @@ def verify(
     only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
     widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
     model: str = typer.Option(None, help="Claude model id"),
+    alias: str = typer.Option(None, "--as", help="name the facts/verdicts/assignments files differently (a second window for one roll)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="spend the money without asking"),
 ) -> None:
     """Ask Claude which candidate, if any, shows each frame's occasion. Costs money — says how much first."""
@@ -360,7 +376,8 @@ def verify(
     from filmgeo.verify import claude
 
     model = model or claude.DEFAULT_MODEL
-    r = pipeline.run(roll, k=k, widen=widen)
+    r = pipeline.run(roll, k=k, widen=widen, alias=alias)
+    _require_readable(r.frames[0].path, r.pool[0].derivative)
     existing = r.verdicts
     todo = []
     for f in r.frames[: limit or None]:
@@ -400,12 +417,13 @@ def align(
     roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
     pad_days: int = typer.Option(2, help="fallback padding around a hand-tagged roll's true range"),
     widen: bool = typer.Option(False, help="widen the window by a month each side"),
+    alias: str = typer.Option(None, "--as", help="name the facts/verdicts/assignments files differently (a second window for one roll)"),
     out: Path = typer.Option(Path("reports"), help="where the HTML report goes"),
 ) -> None:
     """Solve a roll: time, interval, location and confidence per frame -> JSON + HTML report."""
     from filmgeo.align import pipeline, report as arep
 
-    r = pipeline.run(roll, pad_days=pad_days, widen=widen)
+    r = pipeline.run(roll, pad_days=pad_days, widen=widen, alias=alias)
     sol = r.solution
     table = Table(title=f"{r.key}: {r.window.start:%Y-%m-%d} .. {r.window.end:%Y-%m-%d} ({r.window_source})")
     for col in ("#", "source", "time", "interval", "conf", "location", "truth"):
