@@ -25,3 +25,7 @@ EVENT_MOVE_METRES = 500
 DEFAULT_VARIANTS = ("siglip",)
 TOP_K = 8
 MAX_PER_EVENT = 3
+
+# The user's camera bodies (CLAUDE.md). Roll facts warn on any other name rather than refuse,
+# because a new body is not an error — but a typo would split a keyword in the library.
+KNOWN_CAMERAS = ("Contax T2", "Leica M7", "Mamiya 7II")

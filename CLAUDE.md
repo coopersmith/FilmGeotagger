@@ -10,7 +10,9 @@ batch at the end**. Findings per milestone live in `docs/`.
 ## Where things stand
 
 M0 (write-path proof) and M1 (matching-quality harness) are complete and merged.
-M2 (alignment engine) is next; start with `user_facts` (COO-117).
+M2 (alignment engine) is in progress. COO-117 (`Signal` interface, `user_facts`,
+`photos_trail`, `nfc_log`) is done; next are COO-114/115 (HMM states, emissions, solver).
+`docs/m2-findings.md` has the NFC note format and the facts-window result.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
@@ -51,7 +53,10 @@ The key is **identity-linked**: every API call fails with a 400 unless the
 ```bash
 uv run filmgeo index                 # Photos library -> .filmgeo/library.json (~50s warm, 10+ min cold)
 uv run filmgeo rolls                 # hand-tagged rolls available as ground truth
-uv run filmgeo report <roll-key>     # contact sheet -> reports/
+uv run filmgeo report <roll-key>     # contact sheet -> reports/ (uses the facts window if set)
+uv run filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   # user facts -> .filmgeo/facts/
+uv run filmgeo signals <roll>        # trail points + constraints from every adapter
+uv run pytest                        # unit tests (needs `uv sync --extra dev`)
 
 uv run --extra embed python scripts/eval_m1.py --rolls 9
 uv run --extra embed python scripts/sweep_m1.py --rolls 9 --anchored-only   # cached vectors, seconds
@@ -63,8 +68,9 @@ Neither is installed by a bare `uv sync`.
 
 ### Derived state (gitignored, expensive to rebuild)
 
-`.filmgeo/` holds `library.json` (63 MB Photos metadata cache) and `vectors/` (26 MB of cached
-embeddings). Do not delete casually: the library cache costs a full `PhotosDB()` parse and the
+`.filmgeo/` holds `library.json` (63 MB Photos metadata cache), `vectors/` (26 MB of cached
+embeddings), `facts/` (user facts per roll — the user's input, not derivable) and `nfc_log.txt`
+(the NFC note text; re-reading it through `osascript` takes minutes, see `signals/nfc_log.py`). Do not delete casually: the library cache costs a full `PhotosDB()` parse and the
 vectors cost GPU time. `reports/` holds generated contact sheets.
 
 ## Conventions
