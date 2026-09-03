@@ -88,8 +88,8 @@ scan folders (one per roll)        Apple Photos library (Photos.sqlite + local d
 - `scans/ingest.py` — roll = directory; natural-sort filenames; sha256 for idempotency; read existing EXIF to detect already-tagged files; trim scanner borders before embedding; "reverse roll" flag per roll. No mirror/rotation handling until a real case appears.
 - `photos/library.py` — `osxphotos.PhotosDB()` adapter. Per asset: uuid, tz-aware date, `tzoffset`, lat/lon, largest `path_derivatives` entry, `ismissing`, type. Skip screenshots, trash, hidden. Metadata-only assets (no local derivative) still serve as time/GPS trail points, never as visual candidates. Event segmentation: new event on >45 min gap or >500 m move; each event has interval, centroid, spread radius, count.
 - `signals/` — `Signal` interface returning trail points and/or constraints. MVP adapters: `photos_trail`, `nfc_log`, `user_facts`. Later: `health_gpx`, `google_timeline`, `calendar`, `email_receipts`, `weather`.
-- `embed/` — SigLIP (semantic) + DINOv2 (instance/scene), torch on MPS. Fused score = weighted z-scores within the window. Cache vectors per (uuid|hash, model). Evaluate grayscale and border-trim variants in M1; fit a logistic calibration from similarities to P(match) once labelled data exists.
-- `retrieve.py` — per frame, top-K (≈8) by fused score inside the padded window, at most 3 per event so one heavily photographed scene cannot crowd out another day.
+- `embed/` — SigLIP (semantic) on MPS, DINOv2 available but not in the default path. **M1 measured both plus two fusion methods on 113 hand-anchored frames: SigLIP alone won at every K** (91.2% recall@8 vs 90.3 RRF / 89.4 z-fused / 85.8 DINOv2), and DINOv2 costs 2-4x the embedding time. Fusion by z-score is actively harmful — z-scoring equalises variance but not tail shape, so the more peaked model dominates regardless of which is right. Cache vectors per (uuid|hash, model). Grayscale and border-trim variants still unmeasured; fit a logistic calibration from similarities to P(match) once labelled data exists.
+- `retrieve.py` — per frame, top-K (≈8) inside the padded window, at most 3 per event so one heavily photographed scene cannot crowd out another day. **The per-event cap is worth more than the model choice** (M1: 99.1% vs 93.8% recall@32 with and without). recall@32 of 99.1% means the right candidate is nearly always retrievable and merely ranked low, so K trades directly against verification cost.
 - `verify/claude.py` — structured-output calls. (1) Per frame: frame + up to 6 labelled candidates with local time and place text → `{match, confidence, evidence, clues{indoor, time_of_day, weather, season, signage_text, place_guess, people_descriptors}}`; prompted to separate "same visit" from "same place, another day" and to answer `none` freely. Bulk pass via the Batch API; interactive re-verification via direct call. (2) Per roll: contact sheet + timeline summary → frame groups sharing people/clothing/weather, out-of-sequence suspects. Model chosen in M1 by measuring accuracy against cost (start with the current mid-tier model, escalate if precision is short). Log tokens and cost per call.
 - `align/model.py`, `align/solve.py` — the HMM (below).
 - `geo.py` — interval location, interpolation, offset selection, ambiguity clusters.
@@ -156,9 +156,22 @@ One page per roll, three panes.
 - Safety: no `-overwrite_original` (exiftool keeps `name.jpg_original`), plus a `.filmgeo_backup/` copy of the roll before the first write; read back with `exiftool -j` and diff; record in `writes`. Verify 16-bit TIFF round-trips in M0.
 - Known behaviours: Lightroom shows `DateTimeOriginal` as local wall-clock and preserves but ignores the offset; Photos honours the offset. Both are what we want. Photos can ignore EXIF dates on re-import of a file it considers a duplicate: M0 tests the delete-then-reimport path. Since there is no backlog of already-imported scans, the `photoscript` in-place path is an optional M6 item.
 
-## Ground truth already exists
+## Ground truth already exists — but only half of it is real
 
-Rolls the user has already hand-tagged in Lightroom carry correct EXIF. Strip a copy, run the engine, measure time error, GPS error, and anchor recall/precision. This is the evaluation set for M1 and M2.
+Rolls the user has already hand-tagged carry their corrected EXIF, and they live in the Photos
+library keyworded `Film`: 2,740 frames, 58 rolls, 2016-2026. No stripped-copy fixture set is
+needed; the same assets are both the frames to match and the answer key.
+
+**Only frames the user genuinely anchored may be scored.** For frames between two known points
+they often picked a plausible date at random ("I knew frame 29 and the next roll's frame 1, so I
+guessed in between"). A guessed timestamp is not evidence: it penalises a correct match and
+rewards a lucky one on a densely photographed day. An anchored frame is detectable — hand-anchoring
+means copying a phone photo's EXIF, so the timestamp coincides with that photo's to the second.
+Across the 2026 batch that is 113 of 227 frames, ranging from 95% of one roll to 0% of another.
+`Roll.anchored()` recovers them; every headline metric is measured on those alone.
+
+Scoring on all frames instead understated recall@8 by 12 points and made one roll look like a
+model failure when it was 87% guesses.
 
 ## Phased plan (solo developer with Claude Code; each milestone a few evenings to a weekend)
 

@@ -17,6 +17,11 @@ SAME_MOMENT = 30 * 60  # seconds
 EVENT_GAP_SECONDS = 45 * 60
 EVENT_MOVE_METRES = 500
 
-# Retrieval
+# Retrieval.
+# SigLIP alone, measured in M1 on 113 hand-anchored frames: it beat DINOv2 and both fusion
+# methods at every K (91.2% recall@8 vs 90.3 RRF / 89.4 z-fused / 85.8 DINOv2), and DINOv2 is
+# 2-4x slower to embed. DINOv2 stays available behind `--variants` for the cases PLAN expects it
+# to help with; nothing measured so far needs it.
+DEFAULT_VARIANTS = ("siglip",)
 TOP_K = 8
 MAX_PER_EVENT = 3

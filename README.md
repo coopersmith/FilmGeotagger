@@ -10,7 +10,24 @@ Status is tracked in the
 
 ## Status
 
-Planning complete. Milestone 0 (write-path proof) is next.
+M0 (write-path proof) and M1 (matching-quality harness) are complete.
+Findings: [docs/m0-findings.md](docs/m0-findings.md), [docs/m1-findings.md](docs/m1-findings.md).
+M2 (alignment engine) is next.
+
+```bash
+filmgeo index                 # read the Photos library into the local cache (slow when cold)
+filmgeo rolls                 # hand-tagged rolls available as ground truth
+filmgeo ingest <roll-dir>     # a scan folder as ordered frames
+filmgeo report <roll-key>     # contact sheet -> reports/
+```
+
+Evaluation, which needs `--extra embed` and (for verification) a key in a gitignored `.env`:
+
+```bash
+uv run --extra embed python scripts/eval_m1.py --rolls 9
+uv run --extra embed python scripts/sweep_m1.py --rolls 9 --anchored-only
+uv run --extra embed --extra verify python scripts/verify_m1.py 00007044
+```
 
 ## Milestone 0: write-path proof
 

@@ -42,10 +42,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rolls", type=int, default=6)
     ap.add_argument("--pad-days", type=int, default=2)
+    ap.add_argument("--anchored-only", action="store_true",
+                    help="score only frames the user genuinely anchored (trustworthy truth)")
     args = ap.parse_args()
 
     assets = library.load()
     rolls = [r.clean() for r in eval_set.rolls(assets)][: args.rolls]
+    nonfilm_times = np.sort(np.array([a.date.timestamp() for a in assets if not a.is_film]))
     caches = {v: VectorCache(v) for v in ("siglip", "dinov2")}
 
     # method -> cap -> K -> [found, total]
@@ -70,6 +73,9 @@ def main() -> int:
             i for i, f in enumerate(roll.frames)
             if np.min(np.abs(pool_times - f.date.timestamp())) <= SAME_MOMENT
         ]
+        if args.anchored_only:
+            trusted = set(roll.anchored(nonfilm_times))
+            evaluable = [i for i in evaluable if i in trusted]
 
         for i in evaluable:
             truth = roll.frames[i].date.timestamp()
@@ -79,7 +85,7 @@ def main() -> int:
             scored = {
                 "siglip": sims["siglip"],
                 "dinov2": sims["dinov2"],
-                "z-fused": retrieve.fuse(sims),
+                "z-fused": retrieve.zfuse(sims),   # explicit: retrieve.fuse() now dispatches to RRF
                 "rrf": rank_fuse(sims),
             }
             for method, score in scored.items():

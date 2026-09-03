@@ -27,7 +27,7 @@ import numpy as np
 
 from filmgeo import events as ev
 from filmgeo import eval_set, retrieve
-from filmgeo.config import SAME_MOMENT, TOP_K
+from filmgeo.config import DEFAULT_VARIANTS, SAME_MOMENT, TOP_K
 from filmgeo.embed.cache import embed_cached
 from filmgeo.photos import library
 
@@ -55,7 +55,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rolls", type=int, default=3, help="how many recent hand-tagged rolls")
     ap.add_argument("--pad-days", type=int, default=2, help="window padding around the roll")
-    ap.add_argument("--variants", default="siglip,dinov2")
+    ap.add_argument("--variants", default=",".join(DEFAULT_VARIANTS))
     ap.add_argument("--k", type=int, default=TOP_K)
     args = ap.parse_args()
     variants = args.variants.split(",")

@@ -8,6 +8,14 @@ building it):
 * **Times are group-level, not per-frame.** The user tagged an outing at a time and Lightroom
   spaced the frames a second apart, so eight consecutive frames can share `09:00:0X`. Only the
   frames they anchored to a phone photo are exact. Nothing may be scored to the second.
+* **Only about half of it is real.** The user anchored some frames to a specific phone photo and
+  copied its EXIF; for the frames *between* two such anchors they often picked a plausible date
+  at random ("I knew frame 29 and I knew the next roll's frame 1, so I guessed in between").
+  A guessed timestamp is not evidence: scoring against it penalises a correct match and rewards
+  a lucky one on a densely photographed day. `anchored()` recovers the real ones — a frame whose
+  timestamp coincides with an actual photo's to the second was copied from it — and metrics that
+  matter are reported on those alone. Measured share across the 2026 batch: 113 of 227 frames,
+  ranging from 95% on one roll to 0% on another.
 * **It contains real errors.** Roll `00007038` frame 1 is dated 38 days *after* frames 2-38 of
   the same monotone roll. Ground truth is a strong signal, not gospel; `outliers()` flags frames
   that contradict their own roll so a metric can exclude them and say so.
@@ -76,6 +84,24 @@ class Roll:
         others = sorted(abs(d.timestamp() - median) for d in dates)
         typical = others[int(len(others) * 0.75)] or 1.0
         return {i for i, d in enumerate(dates) if abs(d.timestamp() - median) > max(10 * typical, 86400 * 14)}
+
+    def anchored(self, nonfilm_times: "np.ndarray", tolerance: float = 2.0) -> list[int]:
+        """Indices of frames the user genuinely anchored, rather than derived or guessed.
+
+        Hand-anchoring means copying a phone photo's EXIF, so the frame's timestamp lands on that
+        photo's to the second. A derived or guessed time almost never does. `tolerance` is a
+        couple of seconds because Lightroom spaces a tagged group one second apart.
+        """
+        import numpy as np
+
+        out = []
+        for i, f in enumerate(self.frames):
+            t = f.date.timestamp()
+            j = np.searchsorted(nonfilm_times, t)
+            near = nonfilm_times[max(0, j - 1) : j + 2]
+            if len(near) and float(np.min(np.abs(near - t))) <= tolerance:
+                out.append(i)
+        return out
 
     def clean(self) -> "Roll":
         bad = self.outliers()
