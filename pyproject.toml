@@ -8,6 +8,7 @@ dependencies = [
     "pillow>=11",
     "typer>=0.15",
     "rich>=13",
+    "numpy>=2.5.2",
 ]
 
 [project.optional-dependencies]

@@ -79,3 +79,70 @@ Italy entries that yields +02:00, on the Rhode Island ones −04:00.
 Every non-film asset in the window is a trail point, including the ones without a local
 derivative and the ones without GPS — a time-only point still carries the offset. April 2026
 gives 2,428 points, 2,068 with GPS, every one at −04:00.
+
+## COO-114 / COO-115 — HMM states, emissions, Viterbi and forward-backward
+
+Landed 3 September 2026. `src/filmgeo/align/model.py`, `align/solve.py`, 14 unit tests on
+synthetic timelines, `scripts/align_m2.py` for the measurement below.
+
+### Shape
+
+States per roll: one anchor state per verified candidate (only its frame may occupy it), one
+state per phone-photo event, one per gap between events (plus the lead-in and tail of the
+window), and a single `outside` state. Sorted by time. A transition is allowed when the next
+state can end no earlier than the current one begins, which is the monotone constraint
+expressed on intervals rather than ranks — it lets two frames share an event, lets an anchored
+frame be followed by frames in the same event, and refuses anything that moves backwards.
+`outside` is reachable from and to anything at a flat cost; its posterior mass is the
+wrong-window signal COO-118 will read.
+
+Emissions are log-probabilities. There is no fitted calibration yet (M1 left it open, COO-140
+refits from confirmations), so `AlignParams` carries a hand-set logistic on SigLIP similarity
+and hand-set floors, each documented at the field. The structure the tests pin down is what
+matters: an anchor beats its own event's similarity, an event with nothing similar still holds
+a floor (the user photographs "often, not always"), gaps and outside sit below that, a
+`time_of_day` clue that contradicts an event's local hours costs a fixed penalty, a
+same-outing pair earns a bonus for staying in one event, and a user fact zeroes out every
+state it excludes — a date fact also zeroes `outside`, and a locked frame prunes everything
+but its anchor. Constraints that leave a frame with no state raise instead of solving.
+
+The solver runs Viterbi for the proposal and forward-backward for the posterior. Confidence is
+the posterior mass on the chosen state; the interval is the union of the fewest states that
+carry 90% of the mass, then **clipped to the frame's own facts and to the nearest anchored
+frames on either side** — without that clip, a gap state that ends at an anchor's instant
+reports the whole gap. Anchored frames take the anchor's instant exactly; unanchored ones take
+their state's midpoint pulled inside the neighbouring anchors, then everything is forced
+strictly increasing by 2 s so scan order survives in Photos and Lightroom.
+
+### Measured: interpolated intervals contain the truth
+
+`scripts/align_m2.py` simulates verification from the ground truth itself (the frames
+`Roll.anchored()` recovers, whose timestamp matches a phone photo to the second), so the
+solver is measured on its own logic rather than on Claude's precision. Nine rolls, cached
+SigLIP vectors, no API calls. Scored on held-out anchored frames only:
+
+| anchors given | held-out frames | truth inside 90% interval | median abs. error | median width |
+|---|---|---|---|---|
+| every other anchored frame | 54 | **54 / 54** | 23.6 h | 72.5 h |
+| first and last only | 97 | **97 / 97** | 73.3 h | 176 h |
+| none — similarity, events, order | 113 | **112 / 113** | 72.0 h | 199 h |
+
+This is the M2 exit criterion ("anchored frames exact; interpolated intervals contain the true
+time") met on the hand-tagged rolls. Two caveats that the numbers carry:
+
+* **The interval test uses a two-minute tolerance.** Without it, six of 54 held-out frames
+  fall "outside" by one second: the user tagged groups of frames a second apart in Lightroom,
+  not always in scan order, so a frame between two oracle anchors one second apart can sit a
+  second past its clipped interval. That is the ground truth's granularity, not the solver's.
+* **The intervals are wide, and honestly so.** With only the ends anchored, the median
+  interval is a week; the roll that lived in the camera for 22 days (`00007037`) reports three
+  weeks. This is the "between Tue 14:05 and Wed 17:40" output M1 argued for; the width is what
+  verification anchors and outing groups (COO-119) exist to shrink, and it is now measurable.
+
+The proposal beats the all-gap null path by 39-149 log units on every roll, and mean posterior
+mass on `outside` is 0.001-0.031, so the right-window case is clearly separable — the
+wrong-window half of COO-118 still needs the deliberately-wrong-month run.
+
+One roll (`00007044`) ran under its facts window, the whole of April with 2,428 photos in 182
+events, and gave 371 states: solving takes well under a second, so the month-wide windows
+users will actually type are not a performance concern.
