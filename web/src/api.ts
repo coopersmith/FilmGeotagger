@@ -91,6 +91,17 @@ export interface Frame {
   outing: number | null;
 }
 
+export interface TrailPoint {
+  time: string;
+  lat: number;
+  lon: number;
+  source: string;
+  tzoffset: number | null;
+  label: string | null;
+  ref: string | null;
+  camera: string | null;
+}
+
 export interface RollEvent {
   index: number;
   start: string;
@@ -192,6 +203,13 @@ export const useRoll = (key: string | null) =>
 export const useFrames = (key: string | null) =>
   useQuery({ queryKey: ["frames", key], queryFn: () => request<Frame[]>(`/api/rolls/${encodeURIComponent(key!)}/frames`), enabled: !!key });
 
+/** Trail points with GPS inside a frame's interval, padded so the map has context. */
+export const useTrail = (key: string, number: number, padMinutes = 0) =>
+  useQuery({
+    queryKey: ["trail", key, number, padMinutes],
+    queryFn: () => request<TrailPoint[]>(`/api/rolls/${encodeURIComponent(key)}/frames/${number}/trail?pad_minutes=${padMinutes}`),
+  });
+
 /** One user decision about a frame. The API re-solves and returns every frame, because neighbours move. */
 export function useAssign(key: string) {
   const qc = useQueryClient();
@@ -202,6 +220,7 @@ export function useAssign(key: string) {
       qc.setQueryData(["frames", key], frames);
       qc.invalidateQueries({ queryKey: ["roll", key] });
       qc.invalidateQueries({ queryKey: ["rolls"] });
+      qc.invalidateQueries({ queryKey: ["trail", key] });
     },
   });
 }

@@ -154,6 +154,17 @@ def test_frames_stay_in_scan_order(client):
     assert times == sorted(times) and all(b - a >= timedelta(seconds=2) for a, b in zip(times, times[1:]))
 
 
+def test_frame_trail_is_the_points_inside_the_interval(client):
+    f = client.get(f"/api/rolls/{KEY}/frames/1").json()          # anchored on day 2 morning: occasion 08:50-10:00
+    pts = client.get(f"/api/rolls/{KEY}/frames/1/trail").json()
+    assert [p["ref"] for p in pts] == ["P00", "P01", "P02", "P03"]
+    assert pts[0]["lat"] == 41.0 and pts[0]["source"] == "photos" and pts[0]["tzoffset"] == -14400
+    assert all(f["t_lo"] <= p["time"] <= f["t_hi"] for p in pts)
+    wide = client.get(f"/api/rolls/{KEY}/frames/1/trail?pad_minutes=600").json()
+    assert len(wide) == 8                                          # the afternoon event too
+    assert client.get(f"/api/rolls/{KEY}/frames/9/trail").status_code == 404
+
+
 # -- thumbnails ------------------------------------------------------------------------------
 
 
@@ -237,6 +248,10 @@ def test_typed_time_becomes_a_frame_fact(client, store):
 def test_pin_skip_and_confirm(client):
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"lat": 41.0, "lon": -71.0, "place_name": "home"}).json())
     assert f[2]["fact"]["place_name"] == "home" and f[2]["locked"]
+    assert (f[2]["location"], f[2]["location_source"], f[2]["lat"], f[2]["lon"], f[2]["clusters"]) == ("ok", "user", 41.0, -71.0, [])
+    # A pin is an anchor for its neighbours' interpolation: frame 3, between the pin and the
+    # day-9 anchor 140 km away, stays honest rather than being interpolated across the map.
+    assert f[3]["location"] in ("ambiguous", "none")
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"skip": True}).json())
     assert f[4]["source"] == "skipped"
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/1/assign", json={"confirmed": True}).json())

@@ -223,7 +223,8 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     model = inputs.build()
     solution = solve(model)
     trail = sorted([p for p in trail if p.source != USER_SOURCE] + UserFacts(facts).trail_points(window), key=lambda p: p.time)
-    place(solution, trail)
+    pins = {k - 1: (f.lat, f.lon) for k, f in facts.frames.items() if f.lat is not None and f.lon is not None and 1 <= k <= n}
+    place(solution, trail, pins)
     rev = reverse_test(inputs, solution)
     check = window_check(model, solution, n_verified=len(verdicts) or None)
     return RollRun(key, frames, facts, window, window_source, pool, events, event_ids, sims, candidates,

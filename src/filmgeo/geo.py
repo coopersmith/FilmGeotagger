@@ -4,7 +4,8 @@ The solver gives every frame a time and an interval. This module turns the trail
 photos, NFC taps, user pins — into a location and a UTC offset for each frame, and says how
 much to trust them:
 
-* An anchored frame takes its photo's GPS and offset exactly.
+* An anchored frame takes its photo's GPS and offset exactly. A frame the user pinned takes
+  the pin (`location_source` "user") and counts as an anchor for interpolating its neighbours.
 * Otherwise the trail points inside the frame's interval decide. If they sit within
   `TIGHT_M` of their centroid, that centroid is the location (`ok`). If they are spread out
   but the frame lies between two anchors within `INTERPOLATE_M` of each other, the location
@@ -99,17 +100,27 @@ def _interpolate(a: Assignment, prev: Assignment, nxt: Assignment) -> tuple[floa
     return prev.lat + f * (nxt.lat - prev.lat), prev.lon + f * (nxt.lon - prev.lon)
 
 
-def place(solution: Solution, trail_points: list[TrailPoint]) -> Solution:
-    """Fill location, location_source, clusters, tzoffset and offset_disputed on every frame."""
+def place(solution: Solution, trail_points: list[TrailPoint], pins: dict[int, tuple[float, float]] | None = None) -> Solution:
+    """Fill location, location_source, clusters, tzoffset and offset_disputed on every frame.
+
+    `pins` are the user's place facts by 0-based frame index: a pinned frame is located there,
+    whatever the trail says, and serves as an anchor for interpolating the frames around it.
+    """
     trail = Trail(trail_points)
     located = [p for p in trail.points if p.has_location]
     loc_trail = Trail(located)
     frames = solution.assignments
-    anchored = [i for i, a in enumerate(frames) if a.source in ("anchored", "locked") and a.lat is not None]
+    pins = pins or {}
+    for i, (lat, lon) in pins.items():
+        if 0 <= i < len(frames):
+            frames[i].lat, frames[i].lon = lat, lon
+    anchored = [i for i, a in enumerate(frames) if (a.source in ("anchored", "locked") and a.lat is not None) or i in pins]
 
     for i, a in enumerate(frames):
         # -- location --------------------------------------------------------------------
-        if a.source in ("anchored", "locked") and a.lat is not None:
+        if i in pins:
+            a.location, a.location_source, a.clusters = "ok", "user", []
+        elif a.source in ("anchored", "locked") and a.lat is not None:
             a.location, a.location_source = "ok", "anchor"
         else:
             a.lat = a.lon = None

@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
+
 from filmgeo.align.solve import Assignment, Solution
 from filmgeo.geo import clusters, place
 from filmgeo.signals.base import TrailPoint
@@ -93,3 +95,21 @@ def test_clusters_greedy():
     cs = clusters(pts)
     assert [c.count for c in cs] == [2, 1, 1]
     assert cs[0].spread_m < 100
+
+
+def test_user_pin_places_the_frame_and_anchors_interpolation():
+    from filmgeo.geo import place
+    from filmgeo.align.solve import Assignment
+
+    def asg(i, t, source="interpolated", lat=None, lon=None):
+        return Assignment(i, 0, source, t, t - timedelta(hours=1), t + timedelta(hours=1), 0.5, 0.0, lat=lat, lon=lon,
+                          tzoffset=-14400 if source != "interpolated" else None)
+
+    t0 = datetime(2026, 4, 2, 10, tzinfo=timezone.utc)
+    sol = Solution([0, 0, 0], np.zeros((3, 1)), 0.0, [
+        asg(0, t0, "anchored", 41.0, -71.0), asg(1, t0 + timedelta(hours=3)), asg(2, t0 + timedelta(hours=6)),
+    ])
+    place(sol, [], pins={2: (41.01, -71.0)})
+    a = sol.assignments
+    assert (a[2].location, a[2].location_source, a[2].lat, a[2].lon) == ("ok", "user", 41.01, -71.0)
+    assert a[1].location == "ok" and a[1].location_source == "interpolated" and 41.0 < a[1].lat < 41.01

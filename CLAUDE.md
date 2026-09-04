@@ -38,7 +38,9 @@ the frame's *occasion*, so anchored frames read 0.9-0.99 instead of ~0.55. Detai
 before/after table are in `docs/m3-findings.md`. COO-122 (React app in `web/`: filmstrip,
 frame detail, candidate strip, time editor; `npm run build` → `web/dist`, mounted by `serve`)
 is done; times in the UI are always rendered from the ISO instant plus the frame's `tzoffset`,
-never the photo's zone. Next: COO-123 (map, timeline), COO-124, COO-125, COO-126.
+never the photo's zone. COO-123 (MapLibre map with draggable pin, trail and clusters;
+two-band timeline with click-to-set-time) is done; a user pin is now the frame's location and
+an interpolation anchor in `geo.place`. Next: COO-124 (overrides, keyboard), COO-125, COO-126.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:

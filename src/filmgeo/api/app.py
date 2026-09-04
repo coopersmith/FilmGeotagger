@@ -7,6 +7,7 @@ reachable off the machine. Routes live under `/api` so the web build can own `/`
     GET  /api/rolls/{key}                           header: window, checks, events, facts, outings
     GET  /api/rolls/{key}/frames                    every frame: assignment, candidates, verdict, override
     GET  /api/rolls/{key}/frames/{n}
+    GET  /api/rolls/{key}/frames/{n}/trail?pad_minutes=   trail points with GPS inside the frame's interval
     PUT  /api/rolls/{key}/frames/{n}/assign         an override or a frame fact; re-solves, returns all frames
     GET  /api/rolls/{key}/facts
     PUT  /api/rolls/{key}/facts                     the whole facts file; re-solves (rebuilds the pool if the window moved)
@@ -25,7 +26,7 @@ from __future__ import annotations
 import dataclasses
 import threading
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -196,6 +197,19 @@ def create_app(store: Store | None = None) -> FastAPI:
     def get_frame(key: str, n: int) -> dict:
         r = run_for(key)
         return frame_json(r, frame_index(r, n))
+
+    @app.get("/api/rolls/{key}/frames/{n}/trail")
+    def frame_trail(key: str, n: int, pad_minutes: int = Query(0, ge=0, le=1440)) -> list[dict]:
+        """Trail points with a location inside the frame's interval (padded), for the map."""
+        r = run_for(key)
+        a = r.solution.assignments[frame_index(r, n)]
+        pad = timedelta(minutes=pad_minutes)
+        lo, hi = a.t_lo - pad, a.t_hi + pad
+        return [
+            {"time": _t(p.time), "lat": p.lat, "lon": p.lon, "source": p.source, "tzoffset": p.tzoffset,
+             "label": p.label, "ref": p.ref, "camera": p.camera}
+            for p in r.trail if p.has_location and lo <= p.time <= hi
+        ]
 
     @app.put("/api/rolls/{key}/frames/{n}/assign")
     def assign(key: str, n: int, body: AssignBody) -> list[dict]:

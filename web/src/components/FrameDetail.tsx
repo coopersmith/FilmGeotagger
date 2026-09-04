@@ -1,13 +1,16 @@
 import type { Frame, Roll } from "../api";
-import { useAssign } from "../api";
+import { useAssign, useTrail } from "../api";
 import { fmtClock, fmtDate, fmtOffset, intervalText } from "../format";
 import { Badges } from "./Badges";
 import { CandidateStrip } from "./CandidateStrip";
+import { MapPane } from "./MapPane";
 import { TimeEditor } from "./TimeEditor";
+import { Timeline } from "./Timeline";
 
 /** The selected frame beside the phone photo it was matched to, and everything known about it. */
-export function FrameDetail({ rollKey, frame, frames, roll }: { rollKey: string; frame: Frame; frames: Frame[]; roll: Roll }) {
+export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKey: string; frame: Frame; frames: Frame[]; roll: Roll; onSelect: (n: number) => void }) {
   const assign = useAssign(rollKey);
+  const trail = useTrail(rollKey, frame.number, 30);
   const v = frame.verdict;
   const clues = v?.clues ?? {};
   const cluePairs = Object.entries(clues).filter(([, val]) => val !== null && val !== undefined && val !== "" && !(Array.isArray(val) && val.length === 0));
@@ -123,6 +126,16 @@ export function FrameDetail({ rollKey, frame, frames, roll }: { rollKey: string;
           <p className="muted">Not verified yet — run `filmgeo verify {rollKey}` to ask Claude about the shortlist.</p>
         )}
       </div>
+
+      <aside className="detail__side">
+        <MapPane
+          frame={frame}
+          trail={trail.data ?? []}
+          busy={assign.isPending}
+          onPlace={(lat, lon, radius_m, label) => assign.mutate({ number: frame.number, body: { lat, lon, ...(radius_m ? { radius_m } : {}), ...(label ? { place_name: label } : {}) } })}
+        />
+        <Timeline roll={roll} frames={frames} selected={frame} trail={trail.data ?? []} busy={assign.isPending} onSelect={onSelect} onSetTime={(iso) => assign.mutate({ number: frame.number, body: { when: iso } })} />
+      </aside>
 
       <CandidateStrip frame={frame} busy={assign.isPending} error={assign.error ? (assign.error as Error).message : null} onPick={(uuid) => assign.mutate({ number: frame.number, body: { anchor: uuid } })} />
     </section>
