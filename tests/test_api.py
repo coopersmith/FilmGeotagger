@@ -313,6 +313,28 @@ def test_a_contradicting_lock_is_refused_and_nothing_persists(client, store):
     assert client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"when": "2026-04-06"}).status_code == 422
 
 
+def test_batch_confirm_by_confidence_range_and_roll(client, store):
+    before = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    high = sorted(n for n, f in before.items() if f["confidence"] >= 0.8)
+    assert high == [1, 5]                                             # the two anchored frames
+    f = frames_by_number(client.post(f"/api/rolls/{KEY}/confirm", json={"min_confidence": 0.8}).json())
+    assert sorted(n for n, x in f.items() if x["status"] == "confirmed") == high
+    f = frames_by_number(client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [2, 3]}).json())
+    assert sorted(n for n, x in f.items() if x["status"] == "confirmed") == [1, 2, 3, 5]
+    f = frames_by_number(client.post(f"/api/rolls/{KEY}/confirm", json={"confirmed": False}).json())
+    assert not any(x["status"] == "confirmed" for x in f.values())
+    client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"skip": True})
+    f = frames_by_number(client.post(f"/api/rolls/{KEY}/confirm", json={}).json())
+    assert sorted(n for n, x in f.items() if x["status"] == "confirmed") == [1, 2, 3, 5]   # never a skipped frame
+    assert client.get("/api/rolls").json()[0]["confirmed"] == 4
+    on_disk = json.loads((store.assignments_dir / f"{KEY}.json").read_text())
+    assert [x["status"] for x in on_disk["frames"]] == ["confirmed", "confirmed", "confirmed", "proposed", "confirmed"]
+    assert client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [9]}).status_code == 404
+    # A range confirmation is of those assignments: changing one drops its confirmation only.
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"anchor": "P05"}).json())
+    assert f[2]["status"] == "proposed" and f[3]["status"] == "confirmed"
+
+
 # -- facts and realign ------------------------------------------------------------------------
 
 

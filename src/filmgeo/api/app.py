@@ -10,6 +10,7 @@ reachable off the machine. Routes live under `/api` so the web build can own `/`
     GET  /api/rolls/{key}/photos?event=N | ?start=&end=   the pool's photos of one event or an instant range
     GET  /api/rolls/{key}/frames/{n}/trail?pad_minutes=   trail points with GPS inside the frame's interval
     PUT  /api/rolls/{key}/frames/{n}/assign         an override or a frame fact; re-solves, returns all frames
+    POST /api/rolls/{key}/confirm                   {"confirmed", "frames"?, "min_confidence"?}: batch confirm / unconfirm
     GET  /api/rolls/{key}/facts
     PUT  /api/rolls/{key}/facts                     the whole facts file; re-solves (rebuilds the pool if the window moved)
     POST /api/rolls/{key}/realign                   {"widen": bool}: from disk again, optionally a month wider each side
@@ -69,6 +70,14 @@ class AssignBody(BaseModel):
 
 class RealignBody(BaseModel):
     widen: bool = False
+
+
+class ConfirmBody(BaseModel):
+    """Which frames: an explicit list, a confidence floor, or (neither) the whole roll. Skipped frames are never confirmed."""
+
+    confirmed: bool = True
+    frames: list[int] | None = Field(None, description="frame numbers; default every frame")
+    min_confidence: float | None = Field(None, ge=0, le=1, description="only frames at or above this confidence")
 
 
 class FactsBody(BaseModel):
@@ -281,6 +290,23 @@ def create_app(store: Store | None = None) -> FastAPI:
         if problems:
             raise HTTPException(422, "; ".join(problems))
         new = solved(lambda: store.update(key, facts=facts, overrides=overrides))
+        return frames_json(new)
+
+    @app.post("/api/rolls/{key}/confirm")
+    def confirm(key: str, body: ConfirmBody) -> list[dict]:
+        r = run_for(key)
+        wanted = set(body.frames) if body.frames is not None else {f.number for f in r.frames}
+        unknown = wanted - {f.number for f in r.frames}
+        if unknown:
+            raise HTTPException(404, f"roll {key} has no frame(s) {sorted(unknown)}")
+        _, overrides = store.edit(key)
+        for f, a in zip(r.frames, r.solution.assignments):
+            if f.number not in wanted or a.source == "skipped":
+                continue
+            if body.confirmed and body.min_confidence is not None and a.confidence < body.min_confidence:
+                continue
+            overrides.frame(f.number).confirmed = body.confirmed
+        new = solved(lambda: store.update(key, overrides=overrides))
         return frames_json(new)
 
     @app.get("/api/rolls/{key}/facts")

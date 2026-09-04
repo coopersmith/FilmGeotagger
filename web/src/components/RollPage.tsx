@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAssign, useFrames, useRealign, useRoll } from "../api";
 import { fmtDate } from "../format";
+import { BatchBar } from "./BatchBar";
 import { FactsPanel } from "./FactsPanel";
 import { Filmstrip } from "./Filmstrip";
 import { FrameDetail } from "./FrameDetail";
@@ -13,6 +14,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
   const assign = useAssign(rollKey);
   const [selected, setSelected] = useState<number | null>(null);
   const [factsOpen, setFactsOpen] = useState(false);
+  const [range, setRange] = useState<[number, number] | null>(null);
   const list = frames.data ?? [];
   const current = useMemo(() => list.find((f) => f.number === selected) ?? list[0] ?? null, [list, selected]);
   useEffect(() => {
@@ -111,7 +113,19 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
       {r && factsOpen && <FactsPanel rollKey={rollKey} roll={r} onClose={() => setFactsOpen(false)} />}
       {loading && <p className="muted pad">Building this roll — library, vectors, solve…</p>}
       {error && <p className="error pad">{String((error as Error).message ?? error)}</p>}
-      {list.length > 0 && <Filmstrip frames={list} selected={current?.number ?? null} onSelect={setSelected} />}
+      {list.length > 0 && (
+        <Filmstrip
+          frames={list}
+          selected={current?.number ?? null}
+          onSelect={setSelected}
+          range={range}
+          onRange={(n) => {
+            const a = current?.number ?? n;
+            setRange([Math.min(a, n), Math.max(a, n)]);
+          }}
+        />
+      )}
+      {list.length > 0 && <BatchBar rollKey={rollKey} frames={list} range={range} onClearRange={() => setRange(null)} />}
       {current && r && <FrameDetail rollKey={rollKey} frame={current} frames={list} roll={r} onSelect={setSelected} />}
       <Keys />
     </div>

@@ -236,6 +236,20 @@ export function useAssign(key: string) {
   });
 }
 
+/** Batch confirm or unconfirm: every frame, those at or above a confidence, or a list. Skipped frames are never confirmed. */
+export function useConfirm(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { confirmed: boolean; frames?: number[]; min_confidence?: number }) =>
+      request<Frame[]>(`/api/rolls/${encodeURIComponent(key)}/confirm`, { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (frames) => {
+      qc.setQueryData(["frames", key], frames);
+      qc.invalidateQueries({ queryKey: ["roll", key] });
+      qc.invalidateQueries({ queryKey: ["rolls"] });
+    },
+  });
+}
+
 /** The whole facts file. A moved window rebuilds the pool (seconds); anything else re-solves in place. */
 export function useSaveFacts(key: string) {
   const qc = useQueryClient();

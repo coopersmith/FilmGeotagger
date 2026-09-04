@@ -28,7 +28,7 @@ stays the shortlist and a grayscale second stage is COO-148. **M2 is complete.**
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
-M3 (review UI) is in progress. Done: COO-121 (`api/`: FastAPI on 127.0.0.1 under `/api`,
+M3 (review UI) is complete. COO-121 (`api/`: FastAPI on 127.0.0.1 under `/api`,
 `Store` keeping one solved run per roll and re-solving in milliseconds via
 `pipeline.resolve`, overrides in `.filmgeo/overrides/`, thumbnails in `.filmgeo/thumbs/`,
 `filmgeo serve`). Building it exposed an engine bug: two anchors in one event in the wrong
@@ -45,8 +45,12 @@ any-photo picker from the timeline's event bars, not-a-match, no-reference, unkn
 unlock, keys `j k 1-9 Enter n N x u ?`) is done; "unknown" drops a pick and any change
 unconfirms. COO-125 (roll facts drawer with save / rebuild / widen, frame facts form,
 Claude cost estimate) is done; "same day as frame N" now binds a frame to a dated partner's
-day in `frame_bounds` (two undated frames sharing a day wait for COO-147). Next: COO-126
-(batch confirm), the last M3 issue.
+day in `frame_bounds` (two undated frames sharing a day wait for COO-147). COO-126 (batch
+confirm: `POST …/confirm` by list, confidence floor or whole roll; shift-click ranges) is
+done. **M3 is complete**; `docs/m3-findings.md` closes with a one-paragraph summary and what
+still needs a look from Terminal.app (map tiles and Photos thumbnails on a real roll).
+Next: M4, the write step (COO-127 first), which reads `.filmgeo/assignments/<roll>.json` and
+requires `status: confirmed`.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
