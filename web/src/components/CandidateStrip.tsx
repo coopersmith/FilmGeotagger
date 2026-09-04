@@ -2,7 +2,7 @@ import type { Frame } from "../api";
 import { fmtClock, fmtDate, fmtDelta } from "../format";
 
 /** The shortlist retrieval produced: similarity, whether Claude saw it, what it said. */
-export function CandidateStrip({ frame, busy, error, onPick }: { frame: Frame; busy: boolean; error: string | null; onPick: (uuid: string) => void }) {
+export function CandidateStrip({ frame, busy, error, onPick, onReject }: { frame: Frame; busy: boolean; error: string | null; onPick: (uuid: string) => void; onReject: (uuid: string) => void }) {
   return (
     <div className="cands">
       <div className="cands__head">
@@ -36,9 +36,14 @@ export function CandidateStrip({ frame, busy, error, onPick }: { frame: Frame; b
                   {c.rejected && <span className="badge badge--warn">rejected</span>}
                 </span>
               </div>
-              <button className="btn btn--use" disabled={busy || chosen} onClick={() => onPick(c.uuid)} title="lock this frame to this photo's time and GPS; neighbours re-solve">
-                {chosen ? "in use" : "Use this photo's time and GPS"}
-              </button>
+              <div className="cand__actions">
+                <button className="btn btn--use" disabled={busy || chosen} onClick={() => onPick(c.uuid)} title={`${k < 9 ? `${k + 1} — ` : ""}lock this frame to this photo's time and GPS; neighbours re-solve`}>
+                  {chosen ? "in use" : "Use this photo's time and GPS"}
+                </button>
+                <button className="btn btn--ghost btn--use" disabled={busy || c.rejected} onClick={() => onReject(c.uuid)} title="not a match: the solver will not anchor this frame to this photo">
+                  {c.rejected ? "rejected" : "not a match"}
+                </button>
+              </div>
             </li>
           );
         })}

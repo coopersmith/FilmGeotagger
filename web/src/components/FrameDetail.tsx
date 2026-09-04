@@ -4,13 +4,18 @@ import { fmtClock, fmtDate, fmtOffset, intervalText } from "../format";
 import { Badges } from "./Badges";
 import { CandidateStrip } from "./CandidateStrip";
 import { MapPane } from "./MapPane";
+import { PhotoBrowser } from "./PhotoBrowser";
 import { TimeEditor } from "./TimeEditor";
 import { Timeline } from "./Timeline";
+import { useState } from "react";
 
 /** The selected frame beside the phone photo it was matched to, and everything known about it. */
 export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKey: string; frame: Frame; frames: Frame[]; roll: Roll; onSelect: (n: number) => void }) {
   const assign = useAssign(rollKey);
   const trail = useTrail(rollKey, frame.number, 30);
+  const [browsing, setBrowsing] = useState<number | null>(null);
+  const act = (body: Parameters<typeof assign.mutate>[0]["body"]) => assign.mutate({ number: frame.number, body });
+  const browsingEvent = browsing === null ? null : (roll.events.find((e) => e.index === browsing) ?? null);
   const v = frame.verdict;
   const clues = v?.clues ?? {};
   const cluePairs = Object.entries(clues).filter(([, val]) => val !== null && val !== undefined && val !== "" && !(Array.isArray(val) && val.length === 0));
@@ -53,6 +58,27 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
       </div>
 
       <div className="detail__facts">
+        <div className="actions">
+          <button className={`btn ${frame.status === "confirmed" ? "btn--on" : ""}`} disabled={assign.isPending} onClick={() => act({ confirmed: frame.status !== "confirmed" })} title="Enter">
+            {frame.status === "confirmed" ? "✓ confirmed" : "confirm"}
+          </button>
+          <button className="btn btn--ghost" disabled={assign.isPending || !frame.anchor_uuid} onClick={() => frame.anchor_uuid && act({ reject: [frame.anchor_uuid] })} title="n — this photo is not this frame; the solver picks again without it">
+            not a match
+          </button>
+          <button className={`btn btn--ghost ${frame.override?.no_reference ? "btn--on" : ""}`} disabled={assign.isPending} onClick={() => act({ no_reference: !frame.override?.no_reference })} title="N — no phone photo shows this frame; place it between its neighbours">
+            no reference
+          </button>
+          <button className={`btn btn--ghost ${frame.source === "skipped" ? "btn--on" : ""}`} disabled={assign.isPending} onClick={() => act({ skip: frame.source !== "skipped" })} title="x — leave this frame unassigned">
+            unknown
+          </button>
+          {(frame.locked || frame.override || frame.fact) && (
+            <button className="btn btn--ghost" disabled={assign.isPending} onClick={() => act({ unlock: true })} title="u — drop every decision and fact about this frame">
+              unlock
+            </button>
+          )}
+          {assign.isPending && <span className="muted">re-solving…</span>}
+          {assign.error && <span className="error">{(assign.error as Error).message}</span>}
+        </div>
         <TimeEditor rollKey={rollKey} frame={frame} />
 
         <dl className="kv">
@@ -134,10 +160,22 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
           busy={assign.isPending}
           onPlace={(lat, lon, radius_m, label) => assign.mutate({ number: frame.number, body: { lat, lon, ...(radius_m ? { radius_m } : {}), ...(label ? { place_name: label } : {}) } })}
         />
-        <Timeline roll={roll} frames={frames} selected={frame} trail={trail.data ?? []} busy={assign.isPending} onSelect={onSelect} onSetTime={(iso) => assign.mutate({ number: frame.number, body: { when: iso } })} />
+        <Timeline
+          roll={roll}
+          frames={frames}
+          selected={frame}
+          trail={trail.data ?? []}
+          busy={assign.isPending}
+          onSelect={onSelect}
+          onSetTime={(iso) => act({ when: iso })}
+          onEvent={(i) => setBrowsing((b) => (b === i ? null : i))}
+          browsing={browsing}
+        />
       </aside>
 
-      <CandidateStrip frame={frame} busy={assign.isPending} error={assign.error ? (assign.error as Error).message : null} onPick={(uuid) => assign.mutate({ number: frame.number, body: { anchor: uuid } })} />
+      {browsingEvent && <PhotoBrowser rollKey={rollKey} frame={frame} event={browsingEvent} busy={assign.isPending} onPick={(uuid) => act({ anchor: uuid })} onClose={() => setBrowsing(null)} />}
+
+      <CandidateStrip frame={frame} busy={assign.isPending} error={assign.error ? (assign.error as Error).message : null} onPick={(uuid) => act({ anchor: uuid })} onReject={(uuid) => act({ reject: [uuid] })} />
     </section>
   );
 }
