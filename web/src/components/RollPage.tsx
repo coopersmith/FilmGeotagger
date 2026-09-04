@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAssign, useFrames, useRealign, useRoll } from "../api";
+import { serverIsOld, useAssign, useFrames, useRealign, useRoll } from "../api";
 import { fmtDate } from "../format";
 import { FactsPanel } from "./FactsPanel";
 import { NextStrip } from "./NextStrip";
@@ -77,6 +77,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
   }, [current, list, assign]);
 
   const r = roll.data;
+  const stale = serverIsOld(frames.data);
   const loading = roll.isLoading || frames.isLoading;
   const error = roll.error ?? frames.error;
 
@@ -106,9 +107,11 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
               </span>
             )}
             {r.reverse.suspect && <span className="pill pill--warn">possibly reverse-wound</span>}
-            <span className="muted" title={`${r.cost.verified_frames} frames verified at K ${r.cost.k}`}>
-              Claude ≈ ${r.cost.usd.toFixed(2)}
-            </span>
+            {r.cost && (
+              <span className="muted" title={`${r.cost.verified_frames} frames verified at K ${r.cost.k}`}>
+                Claude ≈ ${r.cost.usd.toFixed(2)}
+              </span>
+            )}
             <button className={`btn btn--ghost ${factsOpen ? "btn--on" : ""}`} onClick={() => setFactsOpen((o) => !o)} title="the window, camera, film, lab, notes; widen and re-run">
               roll facts
             </button>
@@ -124,6 +127,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
       {r && factsOpen && <FactsPanel rollKey={rollKey} roll={r} onClose={() => setFactsOpen(false)} />}
       {r && list.length > 0 && <Welcome roll={r} frames={list} open={welcome} onClose={() => setWelcome(false)} />}
       {loading && <p className="muted pad">Building this roll — library, vectors, solve…</p>}
+      {stale && <p className="error pad">This page is newer than the running server: stop `filmgeo serve` (Ctrl-C), start it again, then reload.</p>}
       {error && <p className="error pad">{String((error as Error).message ?? error)}</p>}
       {list.length > 0 && (
         <Filmstrip

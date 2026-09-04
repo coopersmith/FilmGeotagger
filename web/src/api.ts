@@ -204,8 +204,19 @@ export const useRolls = () => useQuery({ queryKey: ["rolls"], queryFn: () => req
 export const useRoll = (key: string | null) =>
   useQuery({ queryKey: ["roll", key], queryFn: () => request<Roll>(`/api/rolls/${encodeURIComponent(key!)}`), enabled: !!key });
 
+/** Older servers (before COO-149) send no `possible`; fill it so the page renders and says so. */
+export function normaliseFrame(f: Frame): Frame {
+  return { ...f, possible: f.possible ?? [], candidates: f.candidates ?? [], clusters: f.clusters ?? [] };
+}
+
+export const serverIsOld = (frames: Frame[] | undefined) => !!frames?.length && frames.every((f) => (f as Partial<Frame>).possible === undefined);
+
 export const useFrames = (key: string | null) =>
-  useQuery({ queryKey: ["frames", key], queryFn: () => request<Frame[]>(`/api/rolls/${encodeURIComponent(key!)}/frames`), enabled: !!key });
+  useQuery({
+    queryKey: ["frames", key],
+    queryFn: async () => (await request<Frame[]>(`/api/rolls/${encodeURIComponent(key!)}/frames`)).map(normaliseFrame),
+    enabled: !!key,
+  });
 
 /** The pool's photos of one event, for picking any phone photo as the anchor. */
 export const usePhotos = (key: string, event: number | null) =>
@@ -229,7 +240,7 @@ export function useAssign(key: string) {
     mutationFn: ({ number, body }: { number: number; body: AssignBody }) =>
       request<Frame[]>(`/api/rolls/${encodeURIComponent(key)}/frames/${number}/assign`, { method: "PUT", body: JSON.stringify(body) }),
     onSuccess: (frames) => {
-      qc.setQueryData(["frames", key], frames);
+      qc.setQueryData(["frames", key], frames.map(normaliseFrame));
       qc.invalidateQueries({ queryKey: ["roll", key] });
       qc.invalidateQueries({ queryKey: ["rolls"] });
       qc.invalidateQueries({ queryKey: ["trail", key] });
@@ -244,7 +255,7 @@ export function useConfirm(key: string) {
     mutationFn: (body: { confirmed: boolean; frames?: number[]; min_confidence?: number }) =>
       request<Frame[]>(`/api/rolls/${encodeURIComponent(key)}/confirm`, { method: "POST", body: JSON.stringify(body) }),
     onSuccess: (frames) => {
-      qc.setQueryData(["frames", key], frames);
+      qc.setQueryData(["frames", key], frames.map(normaliseFrame));
       qc.invalidateQueries({ queryKey: ["roll", key] });
       qc.invalidateQueries({ queryKey: ["rolls"] });
     },
@@ -273,7 +284,7 @@ export function useRealign(key: string) {
     mutationFn: (widen: boolean) =>
       request<Roll & { frames: Frame[] }>(`/api/rolls/${encodeURIComponent(key)}/realign`, { method: "POST", body: JSON.stringify({ widen }) }),
     onSuccess: ({ frames, ...roll }) => {
-      qc.setQueryData(["frames", key], frames);
+      qc.setQueryData(["frames", key], frames.map(normaliseFrame));
       qc.setQueryData(["roll", key], roll);
       qc.invalidateQueries({ queryKey: ["trail", key] });
       qc.invalidateQueries({ queryKey: ["photos", key] });

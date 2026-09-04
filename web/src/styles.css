@@ -308,3 +308,7 @@ a { color: var(--safelight); }
 @media (max-width: 640px) {
   .detail__pair { grid-template-columns: 1fr; }
 }
+
+/* ---- crash ---- */
+.crash { max-width: 720px; margin: 80px auto; padding: 0 24px; display: flex; flex-direction: column; gap: 12px; }
+.crash pre { white-space: pre-wrap; padding: 12px; background: var(--ink-2); border: 1px solid var(--low); border-radius: 6px; color: var(--low); }
