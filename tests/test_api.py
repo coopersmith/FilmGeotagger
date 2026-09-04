@@ -223,7 +223,7 @@ def test_typed_time_becomes_a_frame_fact(client, store):
     assert f[3]["locked"] and f[3]["fact"]["when"] == "2026-04-05 12:00"
     t = datetime.fromisoformat(f[3]["time"])
     lo = datetime(2026, 4, 5, 12, tzinfo=store.get(KEY).facts.zone)
-    assert lo <= t <= lo + timedelta(minutes=1)
+    assert lo <= t < lo + timedelta(minutes=1)          # the minute is half-open; 12:01:00 is outside it
     facts = json.loads((store.facts_dir / f"{KEY}.json").read_text())
     assert facts["frames"]["3"]["when"] == "2026-04-05 12:00"
     # An ISO instant with an offset is rendered into the roll's zone to the minute.

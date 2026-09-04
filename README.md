@@ -12,8 +12,9 @@ Status is tracked in the
 
 M0 (write-path proof), M1 (matching-quality harness) and M2 (alignment engine) are complete.
 Findings: [docs/m0-findings.md](docs/m0-findings.md), [docs/m1-findings.md](docs/m1-findings.md),
-[docs/m2-findings.md](docs/m2-findings.md). M3 (review UI) is in progress: the local API is
-in ([docs/m3-findings.md](docs/m3-findings.md)); the React app is next.
+[docs/m2-findings.md](docs/m2-findings.md). M3 (review UI) is in progress: the local API and
+the React app's filmstrip, frame detail and candidate strip are in
+([docs/m3-findings.md](docs/m3-findings.md)); map, timeline, overrides and facts editing are next.
 
 ```bash
 filmgeo index                 # read the Photos library into the local cache (slow when cold)
@@ -22,8 +23,12 @@ filmgeo ingest <roll-dir>     # a scan folder as ordered frames
 filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   # what you know about a roll
 filmgeo align <roll>          # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
 filmgeo verify <roll>         # Claude verdicts (costs money, asks first)
-filmgeo serve [roll...]       # review API on http://127.0.0.1:8765 (needs --extra api)
+filmgeo serve [roll...]       # review API + UI on http://127.0.0.1:8765 (needs --extra api; build the UI first)
 ```
+
+The UI lives in `web/` (Vite + React + TypeScript): `cd web && npm install && npm run build`
+writes `web/dist`, which `filmgeo serve` mounts at `/`. `npm run dev` runs it on port 5173
+with `/api` proxied to the server.
 
 Evaluation, which needs `--extra embed` and (for verification) a key in a gitignored `.env`:
 

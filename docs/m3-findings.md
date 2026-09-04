@@ -114,3 +114,56 @@ first request for a roll builds its run (library cache plus pool vectors, a few 
 no web build under `web/dist`, `/` redirects to the OpenAPI page. Roll folders that have no
 facts or assignments yet are not discoverable; name them on the command line
 (`filmgeo serve ~/scans/roll-x`).
+
+## COO-122 — the React app: filmstrip, frame detail, candidate strip
+
+Landed 4 September 2026. `web/` (Vite 5, React 18, TypeScript, React Query 5), built by
+`npm run build` into `web/dist`, which `filmgeo serve` mounts at `/`; `npm run dev` proxies
+`/api` to the running server. Node was not on this Mac; `brew install node` put it there.
+
+### What it is
+
+One page per roll, chosen from a roll list (`#/rolls/<key>` in the hash so a reload keeps
+its place). The look is a light table in a darkroom: warm near-black, paper-white type, one
+safelight-amber accent, Fraunces for display and Instrument Sans / JetBrains Mono for data,
+the filmstrip drawn with sprocket edges. Loud choices were avoided on purpose — the photos
+are the content, and the tool is used for an evening at a time.
+
+* **Filmstrip** in scan order: thumbnail, number, local time, a confidence bar coloured by
+  band (green ≥ 0.8, amber 0.5–0.8, red below, blue when locked), badges as glyphs
+  (⚓ anchored, ● locked, ~ interpolated, ? ambiguous place, ± offset disputed, ✓ confirmed).
+* **Frame detail**: the scan beside the phone photo it was matched to (or an empty plate
+  saying why not), the time editor, interval text, confidence, place or the offered clusters,
+  the outing description, the hand-tagged time when the roll is an eval roll, and Claude's
+  verdict — evidence sentence and clues — with the user's own decisions pinned next to it.
+* **Candidate strip**: retrieval's shortlist with similarity, local time, distance from the
+  assigned time, and what Claude said about each (match / seen, no / not shown), the chosen one
+  and any rejected one marked. **"Use this photo's time and GPS"** on every card locks the
+  frame to it; the whole roll re-solves and the strip updates in place.
+* **Time editor**: the assigned local time and UTC offset, editable; "set time" sends a frame
+  fact (`when`) in ISO-8601 with the chosen offset, which the API renders into the roll's zone
+  to the minute. "unlock" drops the frame's override and facts.
+
+Every write goes through `PUT …/assign`, which returns all frames; the query cache is
+replaced wholesale so neighbours move with no second round trip. The roll header shows the
+window, its source, the camera and film, counts, the "window doubtful" and "possibly
+reverse-wound" flags, and a "re-solve" that re-reads verdicts from disk.
+
+### Two things the UI found
+
+* **Times must be rendered in the frame's own offset, not the photo's zone.** The API's
+  `interval_text` is built server-side from the state's datetimes, whose zone is the photo's
+  — for the Leica Q3 that is UTC (COO-121's trap), and on the synthetic fixture it showed
+  08:50 beside a filmstrip saying 04:50. The UI now formats every time from the ISO instant
+  and the frame's `tzoffset`, which is what will be written, and derives the interval text
+  the same way; `interval_text` stays in the JSON for the report.
+* **A typed time came back a minute late.** A fact "07:15" is the half-open minute
+  [07:15, 07:16), and `_assign_times` clipped the midpoint to the *exclusive* end, so the
+  frame read 07:16. The clip now stops a second short of the end.
+
+Verified in the browser against the synthetic roll (real scan fixtures as frames, generated
+photos as candidates): the interval reads in the frame's offset, "Use this photo's time and
+GPS" locks a frame and squeezes its neighbours, "set time" produces the fact and locks. Map
+and timeline (COO-123), keyboard and the remaining overrides (COO-124), facts editing
+(COO-125) and batch confirm (COO-126) are the next issues; the right-hand column is reserved
+for the map and timeline.

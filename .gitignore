@@ -12,3 +12,5 @@ scripts/fixtures/
 .env
 reports/
 .claude/worktrees/
+web/node_modules/
+web/dist/
