@@ -42,3 +42,13 @@ def test_interval_text():
     a.source = "anchored"
     a.t_hi = T + timedelta(hours=3)
     assert interval_text(a) == "this occasion, Thu 2 Apr 09:00–12:00"
+
+
+def test_outings_feed_same_outing_pairs(tmp_path, monkeypatch):
+    from filmgeo.verify import outing as op
+
+    o = op.Outings("r", [{"frames": [1, 2, 3], "description": "x", "confidence": 0.9}])
+    o.save(tmp_path)
+    monkeypatch.setattr(op, "OUTINGS_DIR", tmp_path)
+    loaded = op.Outings.load("r", tmp_path)
+    assert loaded.same_outing_pairs(3) == {(0, 1), (1, 2)}

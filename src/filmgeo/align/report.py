@@ -94,7 +94,14 @@ def write(path: Path, r: RollRun) -> Path:
     else:
         parts.append(f"window check: {html.escape(r.check.reason)} · ")
     days = ", ".join(f"{d:%a %-d %b} ({m:.1f})" for d, m in r.check.best_days[:5])
-    parts.append(f"best days by posterior mass: {days}</div>")
+    parts.append(f"best days by posterior mass: {days}")
+    if r.outings:
+        groups = "; ".join(f"#{g['frames'][0]}–#{g['frames'][-1]} {html.escape(g['description'])} ({g['confidence']:.1f})"
+                           if len(g["frames"]) > 1 else f"#{g['frames'][0]} {html.escape(g['description'])}" for g in r.outings.groups)
+        parts.append(f"<br>outings: {groups}")
+        if r.outings.out_of_sequence:
+            parts.append(f" · <span class=warn>out of sequence: {', '.join('#' + str(n) for n in r.outings.out_of_sequence)}</span>")
+    parts.append("</div>")
     parts.append(timeline_svg(r))
 
     for f, a in zip(r.frames, sol.assignments):
@@ -105,6 +112,10 @@ def write(path: Path, r: RollRun) -> Path:
         parts.append(f"<figcaption><b>frame {f.number}</b></figcaption></div><div>")
         off = "" if a.tzoffset is None else f" {'+' if a.tzoffset >= 0 else '-'}{abs(a.tzoffset)//3600:02d}:{abs(a.tzoffset)%3600//60:02d}"
         parts.append(f"<span class=badge>{a.source}</span>")
+        if r.outings:
+            g = next((k for k, g in enumerate(r.outings.groups, 1) if f.number in g["frames"]), None)
+            if g:
+                parts.append(f"<span class=badge>outing {g}</span>")
         if a.offset_disputed:
             parts.append("<span class='badge warn'>offset disputed</span>")
         parts.append(f"<b>{a.time:%a %-d %b %Y %H:%M:%S}</b>{off} <small>{html.escape(interval_text(a))}</small>")

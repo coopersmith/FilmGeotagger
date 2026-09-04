@@ -363,6 +363,7 @@ def _require_readable(*paths: str | None) -> None:
 def verify(
     roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
     k: int = typer.Option(6, help="candidates shown to Claude per frame"),
+    cap: int = typer.Option(3, help="at most this many candidates per phone-photo event (0 = no cap); COO-146 recommends 1"),
     limit: int = typer.Option(0, help="only the first N frames"),
     only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
     widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
@@ -376,7 +377,7 @@ def verify(
     from filmgeo.verify import claude
 
     model = model or claude.DEFAULT_MODEL
-    r = pipeline.run(roll, k=k, widen=widen, alias=alias)
+    r = pipeline.run(roll, k=k, widen=widen, alias=alias, cap=cap)
     _require_readable(r.frames[0].path, r.pool[0].derivative)
     existing = r.verdicts
     todo = []
@@ -408,8 +409,41 @@ def verify(
             out[f.number] = pipeline.Verdict(shown, match, v.confidence, v.evidence, v.clues.model_dump())
             console.print(f"  frame {f.number}: {'match ' + by_uuid[match].date.strftime('%m-%d %H:%M') if match else 'none':22} "
                           f"{v.confidence:.2f}  {v.evidence[:70]}")
-    p = pipeline.save_verdicts(r.key, out, {"roll": r.key, "model": model, "k": k})
+    p = pipeline.save_verdicts(r.key, out, {"roll": r.key, "model": model, "k": k, "cap": cap})
     console.print(f"{len(out)} verdicts -> {p}")
+
+
+@app.command()
+def outing(
+    roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
+    model: str = typer.Option(None, help="Claude model id"),
+    alias: str = typer.Option(None, "--as", help="name the facts/outings files differently"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="spend the money without asking"),
+) -> None:
+    """One Claude call per roll: group the frames into outings from a contact sheet. Costs money."""
+    from filmgeo.align import pipeline
+    from filmgeo.verify import claude, outing as op
+
+    model = model or op.DEFAULT_MODEL
+    r = pipeline.run(roll, alias=alias)
+    _require_readable(r.frames[0].path)
+    sheet = op.contact_sheet([f.path for f in r.frames], [f.number for f in r.frames], Path("reports") / f"sheet_{r.key}.jpg")
+    console.print(f"[bold]{r.key}[/]: one call with a {len(r.frames)}-frame contact sheet on {model} — about [bold]$0.15[/]")
+    if not yes and not typer.confirm("Spend it?"):
+        raise typer.Exit(0)
+    answer = op.ask(claude.make_client(), sheet, len(r.frames), op.events_summary(r.events), r.facts.camera, model)
+    if answer is None:
+        console.print("[red]no answer[/] (refusal)")
+        raise typer.Exit(1)
+    o = op.Outings.from_answer(r.key, answer, model)
+    p = o.save()
+    for i, g in enumerate(o.groups, 1):
+        console.print(f"  outing {i}: frames {g['frames'][0]}–{g['frames'][-1]} ({len(g['frames'])})  {g['confidence']:.2f}  {g['description']}")
+    if o.out_of_sequence:
+        console.print(f"  [yellow]out of sequence:[/] {o.out_of_sequence}")
+    if o.notes:
+        console.print(f"  {o.notes}")
+    console.print(f"{len(o.groups)} outings, {len(o.same_outing_pairs(len(r.frames)))} same-outing pairs -> {p}")
 
 
 @app.command()
