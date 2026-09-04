@@ -11,10 +11,10 @@ Per-frame outputs:
   smallest set of states carrying 90% of the mass gives the time interval `t_lo..t_hi`;
 * the posterior mass on `outside`, the wrong-window signal COO-118 consumes.
 
-Assigned times: anchored frames take the anchor's instant exactly. Unanchored frames get the
-midpoint of their state's interval, then every time is forced strictly increasing with >= 2 s
-spacing so scan order survives in Photos and Lightroom (PLAN.md). Uncertainty lives in
-`t_lo/t_hi`, never in the written time.
+Assigned times: anchored frames take the anchor's instant exactly, while their interval is the
+anchor's occasion (COO-145). Unanchored frames get the midpoint of their state's interval, then
+every time is forced strictly increasing with >= 2 s spacing so scan order survives in Photos
+and Lightroom (PLAN.md). Uncertainty lives in `t_lo/t_hi`, never in the written time.
 """
 
 from __future__ import annotations
@@ -143,31 +143,33 @@ def _intervals(model: RollModel, path: list[int], post: np.ndarray) -> list[tupl
 
     A state's span can extend well past what the monotone order leaves possible for one frame:
     the gap before an anchored frame's photo, or the whole week a fact has already ruled out.
-    Anchored frames are fixed points, so nothing between two of them may report an interval
-    reaching outside them.
+    An anchored frame reports its *occasion* (the anchor's event span, at least an hour wide,
+    COO-145), not the photo's second: that is what the verdict vouches for. Frames before it
+    therefore end no later than the occasion's end, and frames after it start no earlier than
+    its start.
     """
     n = len(path)
     raw = []
     for i, j in enumerate(path):
         s = model.states[j]
-        lo, hi = (s.t_lo, s.t_hi) if s.kind == "anchor" else _interval(model, post[i])
+        lo, hi = (s.occ_lo, s.occ_hi) if s.kind == "anchor" else _interval(model, post[i])
         if model.bounds:
             b_lo, b_hi = model.bounds[i]
             lo, hi = max(lo, b_lo), min(hi, b_hi)
         raw.append([lo, hi])
-    fixed = [model.states[j].t_lo if model.states[j].kind == "anchor" else None for j in path]
+    occ = [(model.states[j].occ_lo, model.states[j].occ_hi) if model.states[j].kind == "anchor" else None for j in path]
     last = None
     for i in range(n):
         if last is not None:
             raw[i][0] = max(raw[i][0], last)
-        if fixed[i] is not None:
-            last = fixed[i]
+        if occ[i] is not None:
+            last = occ[i][0]
     nxt = None
     for i in range(n - 1, -1, -1):
         if nxt is not None:
             raw[i][1] = min(raw[i][1], nxt)
-        if fixed[i] is not None:
-            nxt = fixed[i]
+        if occ[i] is not None:
+            nxt = occ[i][1]
     return [(lo, max(lo, hi)) for lo, hi in raw]
 
 

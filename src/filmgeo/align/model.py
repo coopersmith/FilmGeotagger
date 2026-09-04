@@ -4,9 +4,13 @@ A roll is an ordered, undated sequence of frames; the phone timeline is a dated 
 events. The alignment asks, for every frame, which piece of the timeline it sits in. Those
 pieces are the hidden states:
 
-* `anchor`  — A(i,c): frame i is exactly at verified candidate c's instant. Exists only for a
+* `anchor`  — A(i,c): frame i is at verified candidate c's instant. Exists only for a
               verified match (Claude confidence >= `min_anchor_confidence`) or a user pick, and
-              only frame i may occupy it.
+              only frame i may occupy it. The state's *time* is c's second — that is what gets
+              written — but its *occasion* (`occ_lo..occ_hi`, the event c belongs to, at least
+              an hour wide) is what the verdict vouches for: Claude answers "same occasion",
+              and when right it picks a same-session photo minutes off (COO-120). The reported
+              interval is the occasion, not the instant.
 * `event`   — E(e): the frame is inside phone-photo event e (interval = event span, location =
               the event centroid).
 * `gap`     — G(k): the frame is between two events. Interval known, location unknown unless a
@@ -38,6 +42,10 @@ from filmgeo.signals.base import Constraint, Window, frame_bounds
 
 Kind = Literal["anchor", "event", "gap", "outside"]
 NEG = -np.inf
+
+# An anchored frame's occasion is at least this wide: Claude's question is "same occasion,
+# within an hour or so", and on real anchors its picks sit 2-6 minutes from the truth.
+OCCASION_MIN_SPAN = timedelta(hours=1)
 
 # Buckets a `time_of_day` clue maps to, in local hours. Overlap with an event's local hours is
 # consistency; none is a penalty. Deliberately generous: a clue is read off film, not a clock.
@@ -128,6 +136,8 @@ class State:
     tzoffset: int | None = None
     locked: bool = False
     side: str | None = None        # outside: "before" | "after"
+    occ_lo: datetime | None = None # anchor: the occasion's span — what the verdict actually vouches for
+    occ_hi: datetime | None = None
 
     @property
     def has_location(self) -> bool:
@@ -188,10 +198,16 @@ def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> 
         prev_end = hi
     if window.end > prev_end:
         states.append(State("gap", prev_end, window.end))
+    spans = {e.index: (e.start, e.end) for e in events}
     for a in anchors:
         if window.contains(a.time):
+            occ_lo, occ_hi = spans.get(a.event, (a.time, a.time))
+            half = OCCASION_MIN_SPAN / 2
+            occ_lo, occ_hi = min(occ_lo, a.time - half), max(occ_hi, a.time + half)
+            occ_lo, occ_hi = max(occ_lo, window.start), min(occ_hi, window.end)
             states.append(State("anchor", a.time, a.time, a.lat, a.lon, event=a.event,
-                                frame=a.frame, uuid=a.uuid, tzoffset=a.tzoffset, locked=a.locked))
+                                frame=a.frame, uuid=a.uuid, tzoffset=a.tzoffset, locked=a.locked,
+                                occ_lo=occ_lo, occ_hi=occ_hi))
     # Sort by time; anchors before the event that contains them is fine either way because
     # transitions test intervals, not ranks. Outside is last.
     states.sort(key=lambda s: (s.t_lo, s.t_hi))

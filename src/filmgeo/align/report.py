@@ -33,9 +33,11 @@ def _fmt(t: datetime) -> str:
 
 
 def interval_text(a) -> str:
-    if a.source in ("anchored", "locked"):
-        return "exact"
     lo, hi = a.t_lo, a.t_hi
+    if a.source in ("anchored", "locked"):
+        if lo.date() == hi.date():
+            return f"this occasion, {lo:%a %-d %b %H:%M}–{hi:%H:%M}"
+        return f"this occasion, {_fmt(lo)} – {_fmt(hi)}"
     if lo.date() == hi.date():
         return f"between {lo:%a %-d %b %H:%M} and {hi:%H:%M}"
     return f"between {_fmt(lo)} and {_fmt(hi)}"

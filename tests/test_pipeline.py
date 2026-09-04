@@ -40,4 +40,5 @@ def test_interval_text():
     a.t_hi = T + timedelta(days=2)
     assert interval_text(a).startswith("between Thu 2 Apr 09:00 and Sat 4 Apr")
     a.source = "anchored"
-    assert interval_text(a) == "exact"
+    a.t_hi = T + timedelta(hours=3)
+    assert interval_text(a) == "this occasion, Thu 2 Apr 09:00–12:00"

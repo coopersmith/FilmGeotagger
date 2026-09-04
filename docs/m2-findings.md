@@ -408,3 +408,28 @@ the written value. Filed as a follow-up; it is a small change in `solve._interva
 COO-120's exit criterion therefore reads: interpolated intervals contain the truth (28 of 30
 on the two rolls); anchored frames are exact when the exact photo reaches Claude, which on
 the honest ground truth it currently does not.
+
+## COO-145 — an anchored frame's interval is its occasion, not the photo's second
+
+Landed 4 September 2026. `align/model.py` (`State.occ_lo/occ_hi`, `OCCASION_MIN_SPAN`),
+`align/solve.py` (`_intervals`), `align/report.py`; one new test, 51 in the suite.
+
+An anchor state keeps the photo's instant as the frame's *time* — that is what gets written,
+as PLAN.md says — but reports the anchor's event span, widened to at least an hour around the
+photo, as its *interval*. Frames before an anchored one end no later than its occasion's end;
+frames after it start no earlier than its start. The report now says "this occasion, Sat 4 Apr
+14:01–17:40" instead of "exact".
+
+Effect, same verdicts as the COO-120 re-run, nothing else changed:
+
+| roll | frames with the truth inside the interval, before | after |
+|---|---|---|
+| `00007037` | 28 / 37 | **36 / 37** |
+| `00007044` | 5 / 10 | **10 / 10** |
+
+Median occasion width on anchored frames is 1.5 h. The oracle measurement is unchanged
+(16/16, 20/20, 34/35 inside; median width 3.6 h in the first row, up from 3.3 h). The one
+remaining miss on `00007037` is a genuine verification error: frame 8 was matched at
+confidence 0.50 to a photo six hours earlier on the same day, and the solver kept it because
+it did not contradict the neighbours. That is the case a confidence threshold above 0.5, or
+the outing pass (COO-119), is for — every wrong-session accept in these runs sits at 0.38-0.70.

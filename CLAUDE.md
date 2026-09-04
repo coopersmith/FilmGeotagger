@@ -14,13 +14,11 @@ M2 (alignment engine) is in progress. Done: COO-117 (`Signal` interface, `user_f
 `photos_trail`, `nfc_log`) and COO-114/115 (`align/model.py`, `align/solve.py`: states,
 emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, offset),
 COO-118 (`align/checks.py`: reverse test, window check, widen), COO-120 (`filmgeo align`,
-`filmgeo verify`, HTML report, validated with real verdicts). M2's alignment engine is
-complete. Two things the validation established, both in `docs/m2-findings.md`: verification
-anchors a frame to the *occasion* (minutes off), not the instant, so anchored intervals should
-be the event span (follow-up issue); and retrieval on the honest ground truth is 62.9%
-recall@8 with the exact photo reaching Claude's top 6 on 0 of 9 real anchors, so M1's open
-items (calibration, K, grayscale, border trim) are the next lever. COO-119 (outing pass) is
-the remaining M2 issue.
+`filmgeo verify`, HTML report, validated with real verdicts), COO-145 (anchored frames report
+their occasion, not the photo's second: 36/37 and 10/10 frames inside their intervals on the
+verified rolls). In flight: COO-146 (retrieval K/cap/calibration on the honest ground truth,
+where recall@8 is 62.9% and the exact photo reached Claude's top 6 on 0 of 9 real anchors).
+Then COO-119 (outing pass), the last M2 issue.
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
