@@ -367,11 +367,17 @@ def verify(
     limit: int = typer.Option(0, help="only the first N frames"),
     only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
     widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
+    inside: bool = typer.Option(False, help="second round: only the unanchored frames, with photos from inside each frame's interval"),
     model: str = typer.Option(None, help="Claude model id"),
     alias: str = typer.Option(None, "--as", help="name the facts/verdicts/assignments files differently (a second window for one roll)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="spend the money without asking"),
 ) -> None:
-    """Ask Claude which candidate, if any, shows each frame's occasion. Costs money — says how much first."""
+    """Ask Claude which candidate, if any, shows each frame's occasion. Costs money — says how much first.
+
+    `--inside` is the iterate step: after a first round and an align, the anchored frames bound
+    every other frame's interval, and the photos inside that interval are the only ones it
+    can be. Facts ("same day as frame 3") narrow the intervals first, for free.
+    """
     from filmgeo.align import pipeline
     from filmgeo.align.checks import new_candidates
     from filmgeo.verify import claude
@@ -381,16 +387,25 @@ def verify(
     _require_readable(r.frames[0].path, r.pool[0].derivative)
     existing = r.verdicts
     todo = []
-    for f in r.frames[: limit or None]:
-        shown = [c.asset.uuid for c in r.candidates[f.number][:k]]
+    for f, a in zip(r.frames[: limit or None], r.solution.assignments):
+        if inside:
+            if a.source in ("anchored", "locked", "skipped"):
+                continue
+            shown = [c.asset.uuid for c in r.possible.get(f.number, [])[:k]]
+            if not shown:
+                console.print(f"  frame {f.number}: no photos inside {a.t_lo:%m-%d %H:%M} .. {a.t_hi:%m-%d %H:%M}")
+                continue
+        else:
+            shown = [c.asset.uuid for c in r.candidates[f.number][:k]]
         if only_new and f.number in existing:
             fresh = new_candidates({f.number: existing[f.number].candidates}, {f.number: shown})[f.number]
             if not fresh:
                 continue
         todo.append((f, shown))
-    est = 0.035 * len(todo) * k / 6   # $0.035/frame at k=6 on claude-opus-5 (M1), linear in images shown
-    console.print(f"[bold]{r.key}[/]: {len(todo)} frames x {k} candidates on {model} — about [bold]${est:.2f}[/] "
-                  f"({len(existing)} already verified)")
+    n_images = sum(len(shown) for _, shown in todo)
+    est = 0.035 * n_images / 6        # $0.035/frame at k=6 on claude-opus-5 (M1), linear in images shown
+    console.print(f"[bold]{r.key}[/]: {len(todo)} frames, {n_images} candidates{' inside their intervals' if inside else ''} on {model} "
+                  f"— about [bold]${est:.2f}[/] ({len(existing)} already verified)")
     if not todo:
         return
     if not yes and not typer.confirm("Spend it?"):

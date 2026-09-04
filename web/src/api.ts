@@ -83,7 +83,8 @@ export interface Frame {
   status: "proposed" | "confirmed";
   image: string;
   interval_text: string;
-  candidates: Candidate[];
+  candidates: Candidate[];   // the month-wide shortlist verification saw
+  possible: Candidate[];     // inside the frame's interval: what it can actually be
   anchor: Photo | null;
   verdict: Verdict | null;
   override: Override | null;

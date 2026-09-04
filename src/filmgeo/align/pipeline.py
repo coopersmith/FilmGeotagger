@@ -145,6 +145,7 @@ class RollRun:
     origin: str = ""                                    # what `resolve_frames` was given: folder or eval key
     trail: list[TrailPoint] = field(default_factory=list)
     overrides: RollOverrides | None = None
+    possible: dict[int, list[retrieve.Candidate]] = field(default_factory=dict)   # by frame number: inside the interval
 
     @property
     def n_frames(self) -> int:
@@ -250,9 +251,45 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     place(solution, trail, pins)
     rev = reverse_test(inputs, solution)
     check = window_check(model, solution, n_verified=len(verdicts) or None)
+    possible = possible_candidates(frames, solution, pool, event_ids, sims)
     return RollRun(key, frames, facts, window, window_source, pool, events, event_ids, sims, candidates,
                    verdicts, inputs, solution, rev, check, _trail_counts(trail), outings,
-                   origin=origin, trail=trail, overrides=overrides)
+                   origin=origin, trail=trail, overrides=overrides, possible=possible)
+
+
+POSSIBLE_K = 8
+
+
+def possible_candidates(frames: list[FrameRef], solution: Solution, pool: list[Asset], event_ids: list[int],
+                        sims: np.ndarray, k: int = POSSIBLE_K, cap: int = 1) -> dict[int, list[retrieve.Candidate]]:
+    """Per frame, the most similar photos *inside its interval* — the ones its neighbours allow.
+
+    The shortlist retrieval builds before the solve ranks the whole window by similarity, so
+    a frame between two anchored days is offered photos from three weeks away (review
+    feedback on `00007044`, frame 4). Once the roll is solved the interval is known and the
+    same cached similarities, masked to it, give the list the user can actually act on — and
+    the list a second verification round should see. Cap 1 per event, like the shortlist.
+    """
+    out: dict[int, list[retrieve.Candidate]] = {}
+    dates = [a.date for a in pool]
+    for i, (f, a) in enumerate(zip(frames, solution.assignments)):
+        row = sims[i]
+        allowed = [j for j, d in enumerate(dates) if a.t_lo <= d <= a.t_hi]
+        # An anchored frame's interval *is* one occasion: offer every photo of it, most
+        # similar first, so the exact shot can be picked by hand.
+        frame_cap = 0 if a.source in ("anchored", "locked") else cap
+        seen: dict[int, int] = {}
+        picks: list[retrieve.Candidate] = []
+        for j in sorted(allowed, key=lambda j: -row[j]):
+            e = event_ids[j]
+            if frame_cap and seen.get(e, 0) >= frame_cap:
+                continue
+            seen[e] = seen.get(e, 0) + 1
+            picks.append(retrieve.Candidate(pool[j], float(row[j]), {"siglip": float(row[j])}))
+            if len(picks) >= k:
+                break
+        out[f.number] = picks
+    return out
 
 
 def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, assets: list[Asset] | None = None,

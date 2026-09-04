@@ -49,7 +49,12 @@ day in `frame_bounds` (two undated frames sharing a day wait for COO-147). COO-1
 confirm: `POST …/confirm` by list, confidence floor or whole roll; shift-click ranges) is
 done. **M3 is complete**; `docs/m3-findings.md` closes with a one-paragraph summary and what
 still needs a look from Terminal.app (map tiles and Photos thumbnails on a real roll).
-Next: M4, the write step (COO-127 first), which reads `.filmgeo/assignments/<roll>.json` and
+Two issues came out of the first real review session: COO-149 (candidates *inside* the
+frame's interval — `pipeline.possible_candidates`, `possible` in the API, the strip leads
+with them and folds the month-wide shortlist under "what Claude saw"; `filmgeo verify
+--inside` is the second round on the unanchored frames, ~$0.16 for the ten-frame roll) and
+COO-150 (the guided flow: a "next" strip, one question per frame, first-run steps).
+Then M4, the write step (COO-127 first), which reads `.filmgeo/assignments/<roll>.json` and
 requires `status: confirmed`.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
@@ -106,6 +111,7 @@ uv run filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   
 uv run filmgeo signals <roll>        # trail points + constraints from every adapter
 uv run --extra embed filmgeo align <roll>            # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
 uv run --extra embed --extra verify filmgeo verify <roll>   # Claude verdicts -> .filmgeo/verdicts/; costs ~$0.035/frame, asks first
+uv run --extra embed --extra verify filmgeo verify <roll> --inside   # second round: unanchored frames, photos inside their intervals only
 uv run --extra api --extra embed filmgeo serve [roll...]   # review API + UI on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
 (cd web && npm install && npm run build)                  # the UI -> web/dist, which serve mounts at /; `npm run dev` proxies /api to 8765
 uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)
