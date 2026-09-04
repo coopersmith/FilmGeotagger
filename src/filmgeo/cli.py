@@ -363,6 +363,7 @@ def _require_readable(*paths: str | None) -> None:
 def verify(
     roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
     k: int = typer.Option(6, help="candidates shown to Claude per frame"),
+    cap: int = typer.Option(3, help="at most this many candidates per phone-photo event (0 = no cap); COO-146 recommends 1"),
     limit: int = typer.Option(0, help="only the first N frames"),
     only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
     widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
@@ -376,7 +377,7 @@ def verify(
     from filmgeo.verify import claude
 
     model = model or claude.DEFAULT_MODEL
-    r = pipeline.run(roll, k=k, widen=widen, alias=alias)
+    r = pipeline.run(roll, k=k, widen=widen, alias=alias, cap=cap)
     _require_readable(r.frames[0].path, r.pool[0].derivative)
     existing = r.verdicts
     todo = []
@@ -408,7 +409,7 @@ def verify(
             out[f.number] = pipeline.Verdict(shown, match, v.confidence, v.evidence, v.clues.model_dump())
             console.print(f"  frame {f.number}: {'match ' + by_uuid[match].date.strftime('%m-%d %H:%M') if match else 'none':22} "
                           f"{v.confidence:.2f}  {v.evidence[:70]}")
-    p = pipeline.save_verdicts(r.key, out, {"roll": r.key, "model": model, "k": k})
+    p = pipeline.save_verdicts(r.key, out, {"roll": r.key, "model": model, "k": k, "cap": cap})
     console.print(f"{len(out)} verdicts -> {p}")
 
 

@@ -22,7 +22,7 @@ from filmgeo import eval_set, events as ev, retrieve
 from filmgeo.align.checks import ReverseTest, RollInputs, WindowCheck, reverse_test, widen as widen_window, window_check
 from filmgeo.align.model import Anchor, FrameClues
 from filmgeo.align.solve import Solution, solve
-from filmgeo.config import DATA_DIR, TOP_K
+from filmgeo.config import DATA_DIR, MAX_PER_EVENT, TOP_K
 from filmgeo.embed.cache import VectorCache
 from filmgeo.geo import place
 from filmgeo.photos import library
@@ -179,7 +179,7 @@ def trail_for(assets: list[Asset], window: Window, facts: RollFacts) -> tuple[li
 
 
 def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, assets: list[Asset] | None = None,
-        alias: str | None = None) -> RollRun:
+        alias: str | None = None, cap: int | None = MAX_PER_EVENT) -> RollRun:
     """`alias` names the facts, verdicts and assignments files instead of the roll key — for
     running one roll under a second window (the wrong-month validation) without clobbering."""
     assets = assets or library.load()
@@ -207,7 +207,7 @@ def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, asset
     pv = pool_vectors(pool)
     sims = fv @ pv.T
     candidates = {
-        f.number: retrieve.top_k({"siglip": fv[i]}, {"siglip": pv}, pool, events=event_ids, k=k)
+        f.number: retrieve.top_k({"siglip": fv[i]}, {"siglip": pv}, pool, events=event_ids, k=k, max_per_event=cap or 0)
         for i, f in enumerate(frames)
     }
     verdicts = load_verdicts(key)
