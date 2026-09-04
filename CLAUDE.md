@@ -28,6 +28,16 @@ stays the shortlist and a grayscale second stage is COO-148. **M2 is complete.**
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
+M3 (review UI) is in progress. Done: COO-121 (`api/`: FastAPI on 127.0.0.1 under `/api`,
+`Store` keeping one solved run per roll and re-solving in milliseconds via
+`pipeline.resolve`, overrides in `.filmgeo/overrides/`, thumbnails in `.filmgeo/thumbs/`,
+`filmgeo serve`). Building it exposed an engine bug: two anchors in one event in the wrong
+order were both kept and the written times came out non-monotone on the 22-day roll. Fixed
+with per-anchor head/tail states (`align/model.py`); confidence is now the posterior mass on
+the frame's *occasion*, so anchored frames read 0.9-0.99 instead of ~0.55. Details and the
+before/after table are in `docs/m3-findings.md`. Next: COO-122 (React app), COO-123, COO-124,
+COO-125, COO-126.
+
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
 
@@ -82,8 +92,9 @@ uv run filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   
 uv run filmgeo signals <roll>        # trail points + constraints from every adapter
 uv run --extra embed filmgeo align <roll>            # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
 uv run --extra embed --extra verify filmgeo verify <roll>   # Claude verdicts -> .filmgeo/verdicts/; costs ~$0.035/frame, asks first
+uv run --extra api --extra embed filmgeo serve [roll...]   # review API on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
 uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)
-uv run pytest                        # unit tests (needs `uv sync --extra dev`)
+uv run --extra dev --extra api pytest   # unit + API tests
 
 uv run --extra embed python scripts/eval_m1.py --rolls 9
 uv run --extra embed python scripts/sweep_m1.py --rolls 9 --anchored-only   # cached vectors, seconds
@@ -92,13 +103,14 @@ uv run --extra embed python scripts/align_m2.py --rolls 9 --mode oracle    # int
 uv run --extra embed python scripts/sweep_retrieval.py                     # K x cap grid on real anchors, free
 ```
 
-Optional dependency groups: `embed` (torch, open_clip, timm, numpy), `verify` (anthropic, pydantic).
-Neither is installed by a bare `uv sync`.
+Optional dependency groups: `embed` (torch, open_clip, timm, numpy), `verify` (anthropic, pydantic),
+`api` (fastapi, uvicorn, pydantic). None is installed by a bare `uv sync`; the tests need `dev` and `api`.
 
 ### Derived state (gitignored, expensive to rebuild)
 
 `.filmgeo/` holds `library.json` (63 MB Photos metadata cache), `vectors/` (26 MB of cached
-embeddings), `facts/` (user facts per roll — the user's input, not derivable) and `nfc_log.txt`
+embeddings), `facts/` and `overrides/` (the user's input per roll, not derivable),
+`assignments/` (the solved proposal per roll, what M4 writes), `thumbs/` and `nfc_log.txt`
 (the NFC note text; re-reading it through `osascript` takes minutes, see `signals/nfc_log.py`). Do not delete casually: the library cache costs a full `PhotosDB()` parse and the
 vectors cost GPU time. `reports/` holds generated contact sheets.
 

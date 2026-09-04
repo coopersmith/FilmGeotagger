@@ -7,8 +7,9 @@ frame is fast enough: 38 × 500 × 500 is under ten million operations.
 Per-frame outputs:
 
 * the Viterbi state — the proposal shown in the UI;
-* the posterior over states — its mass on the chosen state is the confidence, and the
-  smallest set of states carrying 90% of the mass gives the time interval `t_lo..t_hi`;
+* the posterior over states — its mass on the chosen *occasion* (the event, with every anchor
+  head, tail and this frame's own anchors over it) is the confidence, and the smallest set of
+  states carrying 90% of the mass gives the time interval `t_lo..t_hi`;
 * the posterior mass on `outside`, the wrong-window signal COO-118 consumes.
 
 Assigned times: anchored frames take the anchor's instant exactly, while their interval is the
@@ -195,6 +196,10 @@ def _assign_times(model: RollModel, path: list[int], intervals: list[tuple[datet
     for i in range(len(times) - 2, -1, -1):
         if not fixed[i] and times[i] > times[i + 1] - MIN_SPACING:
             times[i] = times[i + 1] - MIN_SPACING
+            # Squeezed between two anchors on one instant there is no room for spacing;
+            # order wins over spacing, and the frame sits on that instant too.
+            if i > 0 and fixed[i - 1] and times[i] < times[i - 1]:
+                times[i] = times[i - 1]
     return times
 
 
@@ -214,10 +219,21 @@ def solve(model: RollModel) -> Solution:
             source = "skipped"
         else:
             source = "interpolated"
+        # Confidence is the mass on the frame's *occasion*: the event state, every anchor's
+        # head and tail over it, and this frame's own anchors in it. They all answer "which
+        # occasion" the same way and differ only in whether the instant is pinned — and the
+        # occasion is what a verdict vouches for (COO-145). Reporting the anchor state alone
+        # would fall as soon as a neighbour's tail offers "same occasion, not that second" as
+        # a cheap alternative. Gaps and outside are single states and keep their own mass.
+        if s.event is not None:
+            same = [k for k, t in enumerate(model.states) if t.event == s.event
+                    and (t.kind == "event" or (t.kind == "anchor" and t.frame == i))]
+        else:
+            same = [j]
         assignments.append(
             Assignment(
                 frame=i, state=j, source=source, time=times[i], t_lo=lo, t_hi=hi,
-                confidence=float(post[i, j]), outside_mass=float(post[i, out_js].sum()),
+                confidence=float(post[i, same].sum()), outside_mass=float(post[i, out_js].sum()),
                 anchor_uuid=s.uuid, tzoffset=s.tzoffset, lat=s.lat, lon=s.lon, event=s.event,
             )
         )

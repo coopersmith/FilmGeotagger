@@ -45,7 +45,7 @@ def test_single_day_anchors_are_exact_and_middle_stays_between():
     for x in a[1:4]:
         assert x.source == "interpolated"
         assert at(2, 9) <= x.time <= at(2, 16)
-        assert x.t_lo >= at(2, 9) and x.t_hi <= at(2, 17)         # between the two anchors' events
+        assert x.t_lo >= at(2, 8, 30) and x.t_hi <= at(2, 17)     # between the two anchors' occasions
     assert [x.time for x in a] == sorted(x.time for x in a)
     assert all(a[i + 1].time - a[i].time >= timedelta(seconds=2) for i in range(4))
     assert sol.anchored == 2
@@ -200,3 +200,65 @@ def test_anchored_interval_is_the_occasion_not_the_instant():
     m = build_model(WINDOW, EVENTS + lone, 1, [Anchor(0, "u", at(20, 15), 9, 0.9)])
     x = solve(m).assignments[0]
     assert (x.t_lo, x.t_hi) == (at(20, 14, 30), at(20, 15, 30)) and x.time == at(20, 15)
+
+
+def test_two_anchors_in_one_event_keep_scan_order():
+    # Verification anchored frames 1 and 3 to two photos of the same event, in the wrong
+    # order. The old anchor -> own-event exception let the path walk back through the event
+    # and the written times came out non-monotone; now one anchor has to go.
+    anchors = [anchor(1, 2, 10, 0, conf=0.9), anchor(3, 2, 9, 0, conf=0.9)]
+    model = build_model(WINDOW, EVENTS, 5, anchors)
+    sol = solve(model)
+    times = [x.time for x in sol.assignments]
+    assert times == sorted(times) and all(b - a >= timedelta(seconds=2) for a, b in zip(times, times[1:]))
+    assert sol.anchored == 1
+    # The same pair locked is a contradiction the user has to resolve.
+    locked = [anchor(1, 2, 10, 0, conf=1.0, locked=True), anchor(3, 2, 9, 0, conf=1.0, locked=True)]
+    with pytest.raises(ValueError):
+        solve(build_model(WINDOW, EVENTS, 5, locked))
+
+
+def test_frames_after_an_anchor_stay_on_its_occasion_through_the_tail():
+    # Anchor at 10:00 inside event 0 (09-11). The event state ranks below the anchor, so the
+    # next frames stay on the occasion only through the anchor's tail, which spans the
+    # occasion (the event, at least an hour around the photo) but ranks after the anchor.
+    model = build_model(WINDOW, EVENTS, 4, [anchor(0, 2, 10, 0, conf=0.95)])
+    sol = solve(model)
+    a = sol.assignments
+    assert a[0].source == "anchored"
+    for x in a[1:]:
+        assert x.time >= at(2, 10)
+    tails = [s for s in model.states if s.after_frame is not None]
+    assert len(tails) == 1 and (tails[0].t_lo, tails[0].t_hi) == (at(2, 9), at(2, 11))
+    j = model.states.index(tails[0])
+    assert a[1].state == j and a[1].event == 0
+    assert model.states.index(next(s for s in model.states if s.kind == "anchor")) == j - 1
+    # The tail is closed to the anchored frame itself and to frames before it.
+    assert model.emissions[0, j] == -np.inf and np.isfinite(model.emissions[1, j])
+    # Mid-event, the event state serves the frames before the anchor, so there is no head...
+    assert not [s for s in model.states if s.before_frame is not None]
+    # ...but on the event's first photo the event ranks above the anchor, and a head is needed.
+    model2 = build_model(WINDOW, EVENTS, 4, [anchor(2, 2, 9, 0, conf=0.95)])
+    heads = [s for s in model2.states if s.before_frame is not None]
+    assert len(heads) == 1
+    h = model2.states.index(heads[0])
+    assert model2.states[h + 1].kind == "anchor"
+    assert np.isfinite(model2.emissions[1, h]) and model2.emissions[2, h] == -np.inf
+    assert solve(model2).assignments[1].event == 0
+
+
+def test_frames_sharing_one_photo_keep_all_their_anchors():
+    # Frames 2 and 3 both matched to the photo at 09:00 (a burst on one occasion), frame 1 to
+    # a weaker photo later the same event. The two strong anchors must survive together, in
+    # frame order, and the weak reversed one go.
+    anchors = [anchor(0, 2, 10, 0, conf=0.6), anchor(1, 2, 9, 0, conf=0.97), anchor(2, 2, 9, 0, conf=0.96)]
+    sol = solve(build_model(WINDOW, EVENTS, 4, anchors))
+    a = sol.assignments
+    assert a[1].source == "anchored" and a[2].source == "anchored" and a[1].time == a[2].time == at(2, 9)
+    assert a[0].source == "interpolated" and a[0].time <= at(2, 9)
+    # And a frame between two anchors on one photo sits on that occasion, at that instant.
+    anchors = [anchor(0, 2, 9, 0, conf=0.95), anchor(2, 2, 9, 0, conf=0.95)]
+    a = solve(build_model(WINDOW, EVENTS, 3, anchors)).assignments
+    assert a[0].source == a[2].source == "anchored" and a[1].source == "interpolated"
+    assert a[1].t_lo <= at(2, 9) <= a[1].t_hi and a[1].event == 0
+    assert a[0].time == a[1].time == a[2].time == at(2, 9)     # order wins over spacing

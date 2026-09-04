@@ -83,3 +83,13 @@ def test_window_check_one_anchor_on_a_short_roll_is_doubtful():
     one = RollInputs(WINDOW, EVENTS, 10, anchors((0, 1, 2))[:1])
     m = one.build()
     assert window_check(m, solve(m), n_verified=10).doubtful
+
+
+def test_reverse_test_survives_an_infeasible_reversed_order():
+    # A lock on frame 3 (day 9) and a date on frame 2 (day 5) are consistent forwards and a
+    # contradiction backwards: the reversed model has no state for the locked frame.
+    locked = Anchor(2, "u", at(9, 13), 2, 1.0, locked=True)
+    dated = Constraint("frame", "user", frame=2, t_lo=at(5), t_hi=at(6))
+    inp = RollInputs(WINDOW, EVENTS, 4, [locked], constraints=[dated])
+    r = reverse_test(inp)
+    assert not r.suspect and r.forward_anchored == 1 and r.reverse_anchored == 0

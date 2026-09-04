@@ -12,7 +12,18 @@ pieces are the hidden states:
               and when right it picks a same-session photo minutes off (COO-120). The reported
               interval is the occasion, not the instant.
 * `event`   — E(e): the frame is inside phone-photo event e (interval = event span, location =
-              the event centroid).
+              the event centroid). Every anchor also gets a *head* and a *tail*: event states
+              over the anchor's occasion, ranked directly before and after the anchor and open
+              only to the frames before, respectively after, it (`before_frame`/`after_frame`).
+              The tail is always there; the head only when the photo is the event's first, since
+              otherwise the event state itself serves the frames before. That is how the
+              neighbours of an anchored frame stay on its occasion without the chain ever
+              stepping down in rank. (An earlier version let an anchor fall back
+              into its own event state instead; two anchors in one event in the wrong order
+              could then be walked through it, and the written times came out non-monotone on
+              the 22-day roll. Two frames on the *same* photo — Lightroom spaces a tagged group
+              a second apart — are ordered by frame within the instant, and a frame before the
+              event's first photo needs the head to stay on the occasion at all.)
 * `gap`     — G(k): the frame is between two events. Interval known, location unknown unless a
               trail point says otherwise (that is geo.py's job, COO-116).
 * `outside` — X: the frame is not in the window at all. Two states, `before` and `after`,
@@ -143,6 +154,9 @@ class State:
     side: str | None = None        # outside: "before" | "after"
     occ_lo: datetime | None = None # anchor: the occasion's span — what the verdict actually vouches for
     occ_hi: datetime | None = None
+    before_frame: int | None = None      # event head: open only to frames before this anchored frame
+    after_frame: int | None = None       # event tail: open only to frames after this anchored frame
+    anchor_time: datetime | None = None  # head/tail: the anchor's instant, which fixes their rank
 
     @property
     def has_location(self) -> bool:
@@ -204,7 +218,9 @@ def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> 
     if window.end > prev_end:
         states.append(State("gap", prev_end, window.end))
     spans = {e.index: (e.start, e.end) for e in events}
-    for a in anchors:
+    by_index = {e.index: e for e in events}
+    headed: set[tuple[int, datetime]] = set()
+    for a in sorted(anchors, key=lambda a: (a.time, a.frame)):
         if window.contains(a.time):
             occ_lo, occ_hi = spans.get(a.event, (a.time, a.time))
             half = OCCASION_MIN_SPAN / 2
@@ -213,12 +229,33 @@ def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> 
             states.append(State("anchor", a.time, a.time, a.lat, a.lon, event=a.event,
                                 frame=a.frame, uuid=a.uuid, tzoffset=a.tzoffset, locked=a.locked,
                                 occ_lo=occ_lo, occ_hi=occ_hi))
-    # Sort by time; anchors before the event that contains them is fine either way because
-    # transitions test intervals, not ranks. Outside is last.
-    states.sort(key=lambda s: (s.t_lo, s.t_hi))
+            e = by_index.get(a.event)
+            lat, lon = (e.lat, e.lon) if e is not None else (a.lat, a.lon)
+            states.append(State("event", occ_lo, occ_hi, lat, lon, event=a.event, after_frame=a.frame, anchor_time=a.time))
+            # A head only where the event state itself cannot serve the frames before the
+            # anchor: when the photo is the event's first, the event ranks *above* the anchor.
+            # Otherwise the event state already covers them, and a second state over the same
+            # occasion would double-count "on the occasion, not at the photo" in the posterior.
+            first_photo = e is None or a.time <= e.start
+            if first_photo and (a.event, a.time) not in headed:
+                headed.add((a.event, a.time))
+                states.append(State("event", occ_lo, occ_hi, lat, lon, event=a.event, before_frame=a.frame, anchor_time=a.time))
+    # Rank: by time, then anchors on one instant by frame, each followed by its own tail, then
+    # the event or gap that starts there. Outside is last.
+    states.sort(key=_rank)
     states.append(State("outside", window.start, window.start, side="before"))
     states.append(State("outside", window.end, window.end, side="after"))
     return states
+
+
+def _rank(s: State) -> tuple:
+    if s.kind == "anchor":
+        return (s.t_lo, 0, s.frame, 0)
+    if s.before_frame is not None:
+        return (s.anchor_time, 0, s.before_frame, -1)
+    if s.after_frame is not None:
+        return (s.anchor_time, 0, s.after_frame, 1)
+    return (s.t_lo, 1, 0, 0)
 
 
 # ---------------------------------------------------------------------------------------
@@ -320,6 +357,12 @@ def build_emissions(
             keep = em[s.frame, j]
             em[s.frame, :] = NEG
             em[s.frame, j] = keep
+    # An anchor's head is for the frames before it only, its tail for the frames after.
+    for j, s in enumerate(states):
+        if s.before_frame is not None:
+            em[s.before_frame:, j] = NEG
+        if s.after_frame is not None:
+            em[: s.after_frame + 1, j] = NEG
 
     # Constraints zero out what they exclude.
     skipped: set[int] = set()
@@ -379,10 +422,10 @@ def build_transitions(states: list[State], params: AlignParams) -> np.ndarray:
             # Monotone order on state *rank*, not on intervals. Two touching intervals are
             # pairwise compatible at their shared instant, but a chain of such pairs can walk
             # backwards through a whole week (event -> gap -> earlier event), and a first-order
-            # transition cannot carry the time variable that would forbid it. Rank can. The one
-            # exception: a frame after an anchored one may sit later in the anchor's own event,
-            # whose state ranks below the anchor because it starts earlier.
-            if b < a and not (s.kind == "anchor" and t.kind == "event" and t.event == s.event):
+            # transition cannot carry the time variable that would forbid it. Rank can, with no
+            # exceptions: a frame after an anchored one that stays in the anchor's event uses
+            # the anchor's tail state, which ranks just above it.
+            if b < a:
                 continue
             v = 0.0
             if a != b:
