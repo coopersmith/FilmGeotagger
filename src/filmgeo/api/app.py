@@ -137,10 +137,19 @@ def frame_json(r: RollRun, i: int) -> dict:
             "verdict": "match" if v and v.match == c.asset.uuid else ("no" if c.asset.uuid in shown else None),
             "rejected": bool(o and c.asset.uuid in o.rejected),
         })
+    possible = []
+    for c in r.possible.get(f.number, []):
+        possible.append(_photo(c.asset, r) | {
+            "score": round(c.score, 4), "event": event_by_uuid.get(c.asset.uuid),
+            "shown": c.asset.uuid in shown,
+            "verdict": "match" if v and v.match == c.asset.uuid else ("no" if c.asset.uuid in shown else None),
+            "rejected": bool(o and c.asset.uuid in o.rejected),
+        })
     base.update({
         "image": f"/api/rolls/{r.key}/frames/{f.number}/image",
         "interval_text": interval_text(a),
         "candidates": cands,
+        "possible": possible,
         "anchor": _photo(by_uuid[a.anchor_uuid], r) if a.anchor_uuid in by_uuid else None,
         "verdict": None if v is None else {"match": v.match, "confidence": v.confidence, "evidence": v.evidence,
                                            "clues": v.clues, "shown": v.candidates},

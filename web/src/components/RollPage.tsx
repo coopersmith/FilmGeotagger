@@ -57,7 +57,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
         default: {
           const d = Number(e.key);
           if (d >= 1 && d <= 9) {
-            const c = current.candidates[d - 1];
+            const c = current.possible[d - 1];
             if (c && c.uuid !== current.anchor_uuid) act({ anchor: c.uuid });
           } else return;
         }

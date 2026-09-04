@@ -158,6 +158,23 @@ def test_roll_header_estimates_claude_cost(client, monkeypatch):
     assert roll["cost"]["k"] == 6 and roll["cost"]["usd"] == 0.07 and roll["cost"]["model"] == "m"
 
 
+def test_possible_photos_are_inside_the_interval(client):
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    # Frame 3 sits between the day-2 morning anchor and the day-9 anchor: nothing from before
+    # 08:50 on day 2 or after day 9, one photo per event, most similar first.
+    poss = f[3]["possible"]
+    assert poss and all(f[3]["t_lo"] <= p["time"] <= f[3]["t_hi"] for p in poss)
+    assert len({p["event"] for p in poss}) == len(poss)
+    assert [p["score"] for p in poss] == sorted((p["score"] for p in poss), reverse=True)
+    # An anchored frame's possible photos are its occasion: the chosen one is among them.
+    assert any(p["uuid"] == "P01" and p["verdict"] == "match" for p in f[1]["possible"])
+    assert all("2026-04-02" in p["time"] for p in f[1]["possible"])
+    assert len(f[1]["possible"]) == 4                              # the whole occasion, not one per event
+    # Lock frame 2 to the afternoon and frame 3's possible photos shrink to the afternoon .. day 9.
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"anchor": "P05"}).json())
+    assert all(p["time"] >= at(2, 14).isoformat() for p in f[3]["possible"])
+
+
 def test_frames_stay_in_scan_order(client):
     frames = client.get(f"/api/rolls/{KEY}/frames").json()
     times = [datetime.fromisoformat(f["time"]) for f in frames]

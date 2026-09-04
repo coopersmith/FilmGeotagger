@@ -318,3 +318,37 @@ M4, and it starts from the assignments files these pages now keep consistent.
 
 Still to look at from Terminal.app, since the sandboxed browser could not: the map tiles
 over a real roll, and the Photos derivatives loading as thumbnails.
+
+## COO-149 — candidates inside the interval, and a second verification round
+
+From the first real review session (4 September 2026, `00007044-k12` in the browser):
+frame 4 sits between frame 3 (anchored 4 April) and frame 5 (anchored 5 April), and its
+candidate strip offered 21, 11, 30 and 9 April. The solver had placed it on 4 April — order
+is respected — but the strip showed retrieval's month-wide shortlist, built before the
+solve and ranked by similarity alone. That is also what Claude saw: **of the 12 photos it was
+asked about for frame 4, none was inside the frame's interval.** Its "none" was correct and
+useless.
+
+### Possible photos
+
+`pipeline.possible_candidates`: after the solve, each frame's top photos by the same cached
+similarities, masked to its interval, one per event (the whole occasion for an anchored
+frame, so the exact shot can be picked by hand). Milliseconds; re-computed on every
+re-solve, so a fact — "frame 4 is the same day as frame 3" — narrows the list at once. In
+the API as `possible` beside `candidates`.
+
+On the real roll, for the four interpolated frames, the shortlist had 0, 1, 1 and 1 photos
+inside the interval out of 12; the possible list has 4, 8, 8 and 8.
+
+The strip now leads with these ("Possible photos, between frame 3 (4 Apr 10:01) and frame 5
+(5 Apr 10:16), one per occasion") with "use this photo" on each; keys 1–9 pick from it. The
+month-wide shortlist with Claude's verdicts is folded under "what Claude saw", with the ones
+outside the stretch dimmed and counted. When nothing lies inside the stretch the strip says
+so and points at the three ways out: same day as a neighbour, a typed time, no reference.
+
+### The second round
+
+`filmgeo verify --inside`: only the unanchored frames, each shown its possible photos. On
+this roll that is 4 frames and 28 images, about $0.16, against $2.52 for the first round.
+The loop the tool now supports is: verify, align, add what you know, `verify --inside`,
+align, confirm. Not yet run on a real roll — it costs money and needs Terminal.app.
