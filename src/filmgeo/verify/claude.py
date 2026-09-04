@@ -29,7 +29,7 @@ Image.MAX_IMAGE_PIXELS = None
 # PLAN.md M1 chooses the tier by measuring accuracy against cost. Opus 5 is the default; the
 # harness sweeps others by passing `model=`.
 DEFAULT_MODEL = "claude-opus-5"
-MAX_CANDIDATES = 6
+MAX_CANDIDATES = 12   # COO-146: K=12 / cap 1 beats 6 / cap 3 on occasion recall and on wrong-day accepts
 IMAGE_EDGE = 768  # candidates are 1024 px derivatives; 768 keeps detail while capping tokens
 
 

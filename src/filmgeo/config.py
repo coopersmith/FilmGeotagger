@@ -23,8 +23,12 @@ EVENT_MOVE_METRES = 500
 # 2-4x slower to embed. DINOv2 stays available behind `--variants` for the cases PLAN expects it
 # to help with; nothing measured so far needs it.
 DEFAULT_VARIANTS = ("siglip",)
-TOP_K = 8
-MAX_PER_EVENT = 3
+# K and the per-event cap: on the honest ground truth (COO-146) occasion-level recall is 74%
+# at K=12 / cap 1 against 63% at K=8 / cap 3, and re-verifying two rolls at K=12 / cap 1 cut
+# wrong-day accepts from 6/28 to 3/28 for $2.52 a roll instead of $1.68. SigLIP finds the
+# scene, not the shot, so a second photo from the same event is a wasted slot.
+TOP_K = 12
+MAX_PER_EVENT = 1
 
 # The user's camera bodies (CLAUDE.md). Roll facts warn on any other name rather than refuse,
 # because a new body is not an error — but a typo would split a keyword in the library.

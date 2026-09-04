@@ -168,7 +168,7 @@ def test_same_outing_bonus_keeps_frames_together():
     sims = np.array([[0.8, 0.3, 0.3], [0.62, 0.62, 0.3]])       # frame 1 torn between event 0 and 1
     kw = dict(sims=sims, event_ids=[0, 1, 2])
     plain = solve(build_model(WINDOW, EVENTS, 2, **kw))
-    bonded = solve(build_model(WINDOW, EVENTS, 2, same_outing={(0, 1)}, **kw))
+    bonded = solve(build_model(WINDOW, EVENTS, 2, same_outing={(0, 1)}, params=AlignParams(outing_bonus=1.0), **kw))
     assert bonded.assignments[1].event == 0
     assert bonded.posterior[1, bonded.assignments[1].state] > plain.posterior[1, bonded.assignments[1].state]
 

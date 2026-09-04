@@ -91,7 +91,12 @@ class AlignParams:
     state_change: float = 0.2
     event_change: float = 0.3
     outside_switch: float = 2.0
-    outing_bonus: float = 1.0
+    # Same-outing transition bonus (COO-119). Measured off: on the two verified rolls the bonus
+    # changed no anchor and no interval, and moved the 22-day roll's interpolated frames from a
+    # median 1.7 h off the truth to 14.8 h — the groups on a newborn-at-home roll are "who is
+    # holding the baby", which says nothing about which day. The pass is kept for its
+    # descriptions and out-of-sequence flags; using groups as joint day constraints is COO-147.
+    outing_bonus: float = 0.0
     # Frame place facts: how far a state's location may be from the stated place.
     place_radius_m: float = 2000.0
 
