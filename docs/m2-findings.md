@@ -433,3 +433,193 @@ remaining miss on `00007037` is a genuine verification error: frame 8 was matche
 confidence 0.50 to a photo six hours earlier on the same day, and the solver kept it because
 it did not contradict the neighbours. That is the case a confidence threshold above 0.5, or
 the outing pass (COO-119), is for — every wrong-session accept in these runs sits at 0.38-0.70.
+
+## COO-146 — retrieval on genuine anchors: K, cap, calibration
+
+Measured 3 September 2026 with `scripts/sweep_retrieval.py` on cached SigLIP vectors only:
+the 9 most recent hand-tagged rolls (`00007037`-`00007045`), `.clean()`, window = each
+roll's true range ±2 days, events from `events.segment()`, scored on the **35 frames anchored
+to a phone photo** (`Roll.anchored(library.phone_times(assets))`). No embedding, no API
+spend. **n = 35; the 95% confidence interval is about ±16 points**, so every number below is a
+direction, not a measurement.
+
+Two hit definitions side by side: **exact** — a shown candidate is within 2 s of the frame's
+true time, i.e. the very photo the user copied the timestamp from, which is what "anchored
+frames exact" needs; and **30 min** — M1's `SAME_MOMENT`, any photo on the same occasion.
+
+One property of the ground truth matters for reading the exact column. Lightroom spaces a
+tagged group one second apart, so consecutive anchored frames share one phone photo and at
+most one of them depicts it: the 35 frames rest on **14 distinct anchor photos** (per roll:
+1, 1, 1, 2, 3, 1, 3, 2). Three of the 14 are Leica Q3 shots rather than iPhone photos.
+
+### The grid
+
+recall@K, exact photo, SigLIP, per-event cap:
+
+| cap | @6 | @8 | @12 | @16 | @24 | @32 |
+|---|---|---|---|---|---|---|
+| 1 | 5.7 | 5.7 | 8.6 | 11.4 | 11.4 | 11.4 |
+| 2 | 5.7 | 8.6 | 8.6 | 8.6 | 14.3 | 14.3 |
+| 3 | 5.7 | 5.7 | 8.6 | 8.6 | 8.6 | 14.3 |
+| 5 | 2.9 | 5.7 | 8.6 | 8.6 | 8.6 | 8.6 |
+| none | 8.6 | 8.6 | 20.0 | 20.0 | 28.6 | **37.1** |
+
+recall@K, same occasion (30 min):
+
+| cap | @6 | @8 | @12 | @16 | @24 | @32 |
+|---|---|---|---|---|---|---|
+| **1** | 60.0 | **65.7** | **74.3** | **77.1** | **88.6** | **88.6** |
+| 2 | 62.9 | 62.9 | 68.6 | 71.4 | 82.9 | 82.9 |
+| 3 (current) | 60.0 | 62.9 | 62.9 | 65.7 | 77.1 | 82.9 |
+| 5 | 57.1 | 60.0 | 62.9 | 62.9 | 68.6 | 74.3 |
+| none | 57.1 | 57.1 | 60.0 | 62.9 | 62.9 | 62.9 |
+
+recall@K by distinct anchor photo (n = 14; a hit if *any* frame of the group retrieves it):
+
+| cap | @6 | @8 | @12 | @16 | @24 | @32 |
+|---|---|---|---|---|---|---|
+| 1 | 14.3 | 14.3 | 14.3 | 14.3 | 14.3 | 14.3 |
+| 3 | 14.3 | 14.3 | 21.4 | 21.4 | 21.4 | 21.4 |
+| none | 21.4 | 21.4 | 35.7 | 35.7 | 42.9 | 57.1 |
+
+Per roll, exact, hits / anchored (the 30-min column is cap 3 @8, from `sweep_m1.py`):
+
+| roll | anchored | anchor photos | exact @6 cap 3 | exact @8 cap 3 | exact @8 none | 30 min @8 cap 3 |
+|---|---|---|---|---|---|---|
+| 00007043 | 2 | 1 | 0 | 0 | 0 | 100% |
+| 00007040 | 5 | 1 | 1 | 1 | 0 | 20% |
+| 00007039 | 2 | 1 | 0 | 0 | 1 | 100% |
+| 00007044 | 4 | 2 | 0 | 0 | 0 | 50% |
+| 00007038 | 8 | 3 | 0 | 0 | 1 | 87.5% |
+| 00007041 | 1 | 1 | 1 | 1 | 1 | 100% |
+| 00007042 | 8 | 3 | 0 | 0 | 0 | 25% |
+| 00007037 | 5 | 2 | 0 | 0 | 0 | 100% |
+
+Three things the grid says:
+
+* **The exact photo is not a K or cap problem.** At K ≤ 8 no cap reaches 9%; the only way
+  up is *uncapped* K = 32 (37% of frames, 57% of anchor photos), which costs $6.72 a roll and
+  drops occasion-level recall from 83-89% to 63%. The two definitions pull the cap in opposite
+  directions: the exact photo wants no cap (it is buried inside its own event), the occasion
+  wants cap 1 (slots spent on a second photo of the same event are wasted).
+* **On the honest set the cap direction reverses M1's.** M1 found cap 3 beat no cap; here
+  cap 1 ≥ cap 2 ≥ cap 3 ≥ cap 5 ≥ none at every K for the occasion definition, though the
+  gaps are 1-4 frames of 35.
+* **Raising K buys occasions, not instants.** Cap 1: 66% @8, 74% @12, 89% @24.
+
+### Miss analysis at K = 6, cap 3
+
+33 of 35 frames miss the exact photo. Plain-similarity rank of the true photo: median
+**118**, rank 1 on one frame, ≤ 6 on three, ≤ 32 on 13, worst 869.
+
+| kind | frames | median true rank | note |
+|---|---|---|---|
+| wrong photo within the right event | 19 | 27 | every one is a 30-min hit; median event size 44 |
+| event missing entirely | 14 | 310 | ranks 51-869; none a 30-min hit |
+
+The 14 "event missing" frames are 4 on `00007040` (newborn at home), 6 on `00007042`, 2 on
+`00007044`, and one each on `00007037` and `00007038` — the domestic-repetition rolls M1 named.
+
+The load-bearing number is the true photo's rank **within its own event**: median 10, top-1
+on 4 of 35, top-6 on 15. The frame's similarity to its exact counterpart (median 0.771) is
+*lower* than to the best photo of its own event (0.829) and to the best photo of some other
+event (0.857). SigLIP finds the scene, not the shot: the phone photo the user copied a
+timestamp from is often a different framing, subject or moment from the film frame, and on
+similarity it is one of the crowd. A two-stage scheme (find the event at K with cap 1, then
+show the event's top-N by similarity) would reach 26% exact at K = 12 / N = 6 and 46% at
+K = 24 / N = 10 — better than any single list, still not a majority.
+
+Consequence for the design: **"anchored frames exact" is not reachable through retrieval on
+this ground truth**, and the follow-up filed under COO-120 (an anchored frame's interval is
+the anchor's *event span*, with the photo's time still the written value) is the honest
+representation. The exact second is what the user copies by hand; the tool should promise the
+occasion.
+
+### Calibration
+
+P(true | similarity) by grid search (centre 0.50-0.99 step 0.01, slope in
+{5, 10, 15, 20, 30, 40, 60}), positives = the exact photo, negatives = the best photo of any
+other event:
+
+| | median | range |
+|---|---|---|
+| exact photo | 0.771 | 0.471-0.924 |
+| best photo of another event | 0.857 | 0.632-0.907 |
+| pool | 0.668 | |
+
+The exact photo beats the best other-event photo on **5 of 35** frames. The fit is
+**centre 0.80, slope 5** — slope at the grid floor, cross-entropy 0.841 against 0.693 for a
+constant predictor, i.e. *no* increasing logistic on similarity separates the exact photo
+from a competitor. The current `AlignParams` (centre 0.88, slope 10, fitted on the 113
+contaminated frames where the "true photo" was usually the frame's own copy at 0.948) scores
+1.104 here.
+
+At the event level, which is what `AlignParams.calibrate` is actually applied to (best
+similarity per event, `build_emissions`): true event's best median 0.829, best other event's
+0.857, the true event wins 18 of 35. Fit vs the best other event: centre 0.83, slope 5
+(0.741, again worse than constant 0.693). Fit vs *every* other event (35 positives, 2,623
+negatives): centre **0.95, slope 20** (0.050 vs 0.070 constant) — a real but small gain that
+mostly encodes the prior that an event is one of ~70.
+
+**Not applied.** The three fits disagree (0.80/5, 0.83/5, 0.95/20), two are worse than a
+constant, and the one that helps would push every event with best similarity below ~0.80 to
+the `event_floor`, which changes the balance against gap and outside states that the COO-114
+and COO-118 tables were measured with. The refit belongs in COO-140, at the event level, with
+the solver re-measured (`scripts/align_m2.py`) in the same change.
+
+### Alternative ranking: events by margin
+
+Top-1 per event, events ranked by (best − runner-up similarity; a single-photo event's
+runner-up taken as the frame's pool median): **exact 0.0% at @6 and @8; 30 min 17.1% / 20.0%**
+against 60.0% / 65.7% for plain similarity with cap 1. Margin rewards small events with one
+odd photo, not exact matches. Rejected.
+
+### Cost
+
+$0.035 a frame at K = 6 on `claude-opus-5` (M1), linear in images shown, 36-frame roll:
+
+| K | $/frame | $/roll | occasion recall, cap 1 | exact recall, none |
+|---|---|---|---|---|
+| 6 | 0.035 | 1.26 | 60.0% | 8.6% |
+| 8 | 0.047 | 1.68 | 65.7% | 8.6% |
+| 12 | 0.070 | 2.52 | 74.3% | 20.0% |
+| 16 | 0.093 | 3.36 | 77.1% | 20.0% |
+| 24 | 0.140 | 5.04 | 88.6% | 28.6% |
+| 32 | 0.187 | 6.72 | 88.6% | 37.1% |
+
+### Recommendation
+
+**K = 12 with cap 1** for the list that feeds verification: 74% of occasions for $2.52 a
+roll, against 63% for $1.68 at today's K = 8 / cap 3; K = 24 / cap 1 reaches 89% for $5.04
+if a roll is worth it. Do not chase the exact photo with K: nothing under $6.72 a roll gets
+it for more than a fifth of frames, and the event-span interval is the right output anyway.
+
+**Nothing in `config.py` or `AlignParams` was changed**, because the recommendation is not
+unambiguous at n = 35: the cap 1 vs cap 3 gap is 1 frame at K = 8 and 4 at K = 12, inside
+±16 points; the two hit definitions want opposite caps; and whether Claude's precision holds
+when it sees one photo per event instead of three is unmeasured — the "same session, same
+sofa" evidence it cites in the wrong-day accepts is exactly what a second in-event photo
+feeds. Note also that `filmgeo verify` has its own default of `k=6` in `cli.py`, so `TOP_K`
+alone would not change what Claude sees. What settles it: re-run `filmgeo verify` on
+`00007037` and `00007044` with the clean pool at K = 12 / cap 1 (about $3.30) and score
+occasion-level precision against the existing K = 6 / cap 3 verdicts; if precision holds,
+change `TOP_K` to 12, `MAX_PER_EVENT` to 1, and the `verify` default together.
+
+### Grayscale — worth one run; border trim is not implemented
+
+The exact photo sits *below* its own event's neighbours on similarity, which is where a
+film-vs-phone colour gap would show. Grayscale is implemented (`Embedder.grayscale`,
+variant `siglip_gray` in `scripts/eval_m1.py`) and costs GPU minutes, not money. It needs
+Photos derivatives, so it runs from Terminal.app, not a tool call:
+
+```bash
+cd ~/GitHub/FilmGeotagger
+uv run --extra embed python scripts/eval_m1.py --rolls 9 --variants siglip_gray   # embeds frames + ~8,000 pool photos into .filmgeo/vectors/siglip_gray; tens of minutes on MPS
+uv run python scripts/sweep_retrieval.py --variant siglip_gray                     # seconds; compare the two grids above
+```
+
+Border trim exists only in PLAN.md (under `scans/ingest.py`); nothing in `src/` crops a scan
+before embedding, so there is no command to give. If grayscale moves the within-event rank,
+trim is the next variant to add (a fixed-fraction crop in `Embedder._load`, cached under its
+own variant name); if grayscale does nothing, the gap is content, not colour, and trim is
+unlikely to help either.

@@ -16,9 +16,12 @@ emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, of
 COO-118 (`align/checks.py`: reverse test, window check, widen), COO-120 (`filmgeo align`,
 `filmgeo verify`, HTML report, validated with real verdicts), COO-145 (anchored frames report
 their occasion, not the photo's second: 36/37 and 10/10 frames inside their intervals on the
-verified rolls). In flight: COO-146 (retrieval K/cap/calibration on the honest ground truth,
-where recall@8 is 62.9% and the exact photo reached Claude's top 6 on 0 of 9 real anchors).
-Then COO-119 (outing pass), the last M2 issue.
+verified rolls). COO-146 (retrieval on the honest ground truth) settled the retrieval question:
+**SigLIP finds the scene, not the shot** — the exact anchor photo ranks median 10th inside its
+own event and no K or cap under $6.72/roll retrieves it for more than a fifth of frames, while
+occasion-level recall rises with K at cap 1 (66% @8, 74% @12, 89% @24). Recommendation K=12,
+cap 1 for verification, unconfirmed until re-verified; `config.py` unchanged. COO-119 (outing
+pass) is built and awaits a Terminal.app run.
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
@@ -83,6 +86,7 @@ uv run --extra embed python scripts/eval_m1.py --rolls 9
 uv run --extra embed python scripts/sweep_m1.py --rolls 9 --anchored-only   # cached vectors, seconds
 uv run --extra embed --extra verify python scripts/verify_m1.py 00007044    # costs money (~$1/roll)
 uv run --extra embed python scripts/align_m2.py --rolls 9 --mode oracle    # interval check, free, seconds
+uv run --extra embed python scripts/sweep_retrieval.py                     # K x cap grid on real anchors, free
 ```
 
 Optional dependency groups: `embed` (torch, open_clip, timm, numpy), `verify` (anthropic, pydantic).
