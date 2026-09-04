@@ -183,16 +183,16 @@ def _assign_times(model: RollModel, path: list[int], intervals: list[tuple[datet
             mid = s.t_lo + (s.t_hi - s.t_lo) / 2
             times.append(min(max(mid, lo), hi))
             fixed.append(False)
-    # Pull unanchored times inside the neighbouring anchors, then force strict ordering.
+    # Force strict ordering with >= 2 s spacing by moving only the unanchored frames: forward
+    # so nothing precedes what came before it, then backward so nothing runs into the next
+    # anchor. Anchored frames keep their photo's instant exactly (PLAN.md); two anchors on the
+    # same photo therefore stay equal, which is the truth and what the user would write.
     for i in range(1, len(times)):
-        if not fixed[i] and times[i] < times[i - 1]:
-            times[i] = times[i - 1]
-    for i in range(len(times) - 2, -1, -1):
-        if not fixed[i] and times[i] > times[i + 1]:
-            times[i] = times[i + 1]
-    for i in range(1, len(times)):
-        if times[i] < times[i - 1] + MIN_SPACING:
+        if not fixed[i] and times[i] < times[i - 1] + MIN_SPACING:
             times[i] = times[i - 1] + MIN_SPACING
+    for i in range(len(times) - 2, -1, -1):
+        if not fixed[i] and times[i] > times[i + 1] - MIN_SPACING:
+            times[i] = times[i + 1] - MIN_SPACING
     return times
 
 
@@ -201,7 +201,7 @@ def solve(model: RollModel) -> Solution:
     post = forward_backward(model)
     intervals = _intervals(model, path, post)
     times = _assign_times(model, path, intervals)
-    out_j = model.outside
+    out_js = model.outside
     assignments = []
     for i, j in enumerate(path):
         s: State = model.states[j]
@@ -215,7 +215,7 @@ def solve(model: RollModel) -> Solution:
         assignments.append(
             Assignment(
                 frame=i, state=j, source=source, time=times[i], t_lo=lo, t_hi=hi,
-                confidence=float(post[i, j]), outside_mass=float(post[i, out_j]),
+                confidence=float(post[i, j]), outside_mass=float(post[i, out_js].sum()),
                 anchor_uuid=s.uuid, tzoffset=s.tzoffset, lat=s.lat, lon=s.lon, event=s.event,
             )
         )

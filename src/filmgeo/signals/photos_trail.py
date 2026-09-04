@@ -2,7 +2,7 @@
 
 Every dated asset in the library is a trail point, whether or not it has a local derivative:
 a photo that cannot be *matched* still says where the user was and what the UTC offset was.
-Film scans are excluded — they are the thing being located, not evidence of it.
+Film scans are excluded, tagged or not — they are the thing being located, not evidence of it.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ class PhotosTrail:
         return [
             TrailPoint(a.date, a.lat, a.lon, SOURCE, tzoffset=a.tzoffset, ref=a.uuid)
             for a in self.assets
-            if not a.is_film and window.contains(a.date)
+            if not a.is_scan and window.contains(a.date)
         ]
 
     def constraints(self) -> list[Constraint]:
@@ -42,7 +42,7 @@ class PhotosTrail:
         """
         best, best_gap = None, within
         for a in self.assets:
-            if a.is_film or a.tzoffset is None:
+            if a.is_scan or a.tzoffset is None:
                 continue
             gap = abs(a.date.replace(tzinfo=None) - naive_local)
             if gap < best_gap:

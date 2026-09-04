@@ -11,11 +11,13 @@ pieces are the hidden states:
               the event centroid).
 * `gap`     — G(k): the frame is between two events. Interval known, location unknown unless a
               trail point says otherwise (that is geo.py's job, COO-116).
-* `outside` — X: the frame is not in the window at all. One state, reachable from anywhere,
-              carrying a large penalty; its posterior mass is the wrong-window signal (COO-118).
+* `outside` — X: the frame is not in the window at all. Two states, `before` and `after`,
+              so a path can start outside and enter, or leave and stay out, but never leave
+              and re-enter earlier in time (that would let the monotone chain be bypassed).
+              Their posterior mass is the wrong-window signal (COO-118).
 
-States are sorted by time; the solver's transitions then only allow a frame to sit no earlier
-than the frame before it. Emissions are log-probabilities. There is no fitted calibration yet
+States are sorted by time and transitions only move to an equal or higher rank, so a frame
+never sits earlier than the frame before it. Emissions are log-probabilities. There is no fitted calibration yet
 (M1 left it open; COO-140 refits from confirmations), so `AlignParams` holds a hand-set
 logistic on SigLIP similarity and hand-set floors. The numbers are documented at each field;
 the *structure* — anchors beat events beat gaps beat outside, and a fact zeros out everything
@@ -51,27 +53,33 @@ TIME_OF_DAY_HOURS = {
 
 @dataclass
 class AlignParams:
-    # Logistic from cosine similarity to P(same moment). SigLIP similarities for true matches
-    # in M1 clustered around 0.6-0.8 and non-matches below ~0.5; centre and slope are set so
-    # 0.55 -> 0.5 and 0.7 -> 0.9. Replace with a fitted curve when COO-140 lands.
-    sim_centre: float = 0.55
-    sim_slope: float = 15.0
+    # Logistic from cosine similarity to P(same moment). Measured on the 113 hand-anchored
+    # frames (docs/m2-findings.md): similarity to the true photo has median 0.948, to the best
+    # photo of any *other* event 0.877, and the pool median is 0.70 — so the whole informative
+    # range is 0.85-0.99, and a centre anywhere lower saturates every event to 1. A grid-fit
+    # logistic of true-vs-best-other gives centre 0.88, slope 10. Refit from confirmations in
+    # COO-140; this is the crude version.
+    sim_centre: float = 0.88
+    sim_slope: float = 10.0
     # Probability floor for sitting in an event that holds no similar photo. The user shoots
     # "often, not always" next to the phone, so an event with nothing similar is still likely.
     event_floor: float = 0.05
     # Flat likelihoods for the evidence-free states.
     gap_prob: float = 0.02
     outside_prob: float = 0.005
-    # Added to log(confidence) for an anchor so a verified match beats the same event's
-    # similarity-only emission. exp(1) ~ 2.7x.
-    anchor_bonus: float = 1.0
+    # Added to log(confidence) for an anchor so the exact instant is preferred over "somewhere
+    # in the same event" — a small nudge, not evidence. See build_emissions for how a verdict
+    # reshapes the whole row.
+    anchor_bonus: float = 0.5
     min_anchor_confidence: float = 0.5
     # A clue (night / midday...) contradicting an event's local hours.
     clue_penalty: float = 1.5
     # Transitions. Time jumps are penalised sublinearly (log1p of hours) so a roll can sit in a
-    # camera for weeks while consecutive frames still prefer to stay close: 1 h costs 0.35,
-    # a day 1.6, a month 3.3.
-    jump_weight: float = 0.5
+    # camera for weeks while consecutive frames still prefer to stay close: 1 h costs 0.24,
+    # a day 1.1, a week 1.8, a month 2.3. For scale, a verdict at 0.9 confidence is worth
+    # log(0.9/0.1) = 2.2 over the alternatives, so one anchor outweighs a week's jump but not
+    # by much — which is why the reverse-roll test counts anchors rather than score.
+    jump_weight: float = 0.35
     state_change: float = 0.2
     event_change: float = 0.3
     outside_switch: float = 2.0
@@ -119,6 +127,7 @@ class State:
     uuid: str | None = None        # anchor: the photo
     tzoffset: int | None = None
     locked: bool = False
+    side: str | None = None        # outside: "before" | "after"
 
     @property
     def has_location(self) -> bool:
@@ -139,7 +148,7 @@ class State:
             return f"E{self.event} {self.t_lo:%m-%d %H:%M}..{self.t_hi:%H:%M}"
         if self.kind == "gap":
             return f"G {self.t_lo:%m-%d %H:%M}..{self.t_hi:%m-%d %H:%M}"
-        return "X"
+        return f"X-{self.side}"
 
 
 @dataclass
@@ -155,8 +164,8 @@ class RollModel:
     bounds: list[tuple[datetime, datetime]] = field(default_factory=list)   # per-frame, from facts
 
     @property
-    def outside(self) -> int:
-        return next(i for i, s in enumerate(self.states) if s.kind == "outside")
+    def outside(self) -> list[int]:
+        return [i for i, s in enumerate(self.states) if s.kind == "outside"]
 
     def anchors_for(self, frame: int) -> list[int]:
         return [i for i, s in enumerate(self.states) if s.kind == "anchor" and s.frame == frame]
@@ -186,7 +195,8 @@ def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> 
     # Sort by time; anchors before the event that contains them is fine either way because
     # transitions test intervals, not ranks. Outside is last.
     states.sort(key=lambda s: (s.t_lo, s.t_hi))
-    states.append(State("outside", window.start, window.end))
+    states.append(State("outside", window.start, window.start, side="before"))
+    states.append(State("outside", window.end, window.end, side="after"))
     return states
 
 
@@ -257,12 +267,31 @@ def build_emissions(
                 if clues and not _clue_consistent(clues[i], hours.get(s.event)):
                     v -= params.clue_penalty
                 em[i, j] = v
-        elif s.kind == "anchor":
+
+    # A verdict "candidate c, confidence q" says: with probability q the frame is on c's
+    # occasion; with 1-q it is anywhere else. So c's event takes at least q, the anchor state
+    # (c's exact instant) takes q plus a small bonus for being exact, and every other state
+    # for that frame is scaled by 1-q. Similarity is not added to the anchor: Claude saw the
+    # image, and similarity is already in the event floor it competes with.
+    by_frame: dict[int, list[Anchor]] = {}
+    for a in anchors:
+        by_frame.setdefault(a.frame, []).append(a)
+    for i, frame_anchors in by_frame.items():
+        q_max = max(min(a.confidence, 1 - 1e-6) for a in frame_anchors)
+        keep_events = {a.event for a in frame_anchors}
+        scale = math.log(1 - q_max)
+        for j, s in enumerate(states):
+            if s.kind == "anchor":
+                continue
+            if s.kind == "event" and s.event in keep_events:
+                q = max(min(a.confidence, 1 - 1e-6) for a in frame_anchors if a.event == s.event)
+                em[i, j] = max(em[i, j], math.log(q))
+            elif np.isfinite(em[i, j]):
+                em[i, j] += scale
+    for j, s in enumerate(states):
+        if s.kind == "anchor":
             a = next(x for x in anchors if x.frame == s.frame and x.uuid == s.uuid and x.time == s.t_lo)
-            conf = max(a.confidence, 1e-6)
-            em[s.frame, j] = math.log(conf) + params.anchor_bonus + math.log(
-                max(params.event_floor, params.calibrate(a.similarity)) if a.similarity else 1.0
-            )
+            em[s.frame, j] = math.log(max(a.confidence, 1e-6)) + params.anchor_bonus
 
     # Locked anchors prune every other state for their frame.
     for j, s in enumerate(states):
@@ -314,14 +343,26 @@ def build_transitions(states: list[State], params: AlignParams) -> np.ndarray:
     tr = np.full((S, S), NEG)
     for a, s in enumerate(states):
         for b, t in enumerate(states):
-            if s.kind == "outside" and t.kind == "outside":
-                tr[a, b] = 0.0
-                continue
             if s.kind == "outside" or t.kind == "outside":
-                tr[a, b] = -params.outside_switch
+                # before* -> in-window* -> after*: never out and back in.
+                if s.kind == "outside" and t.kind == "outside":
+                    if s.side == t.side:
+                        tr[a, b] = 0.0
+                    elif s.side == "before":
+                        tr[a, b] = -params.outside_switch
+                elif s.kind == "outside" and s.side == "before":
+                    tr[a, b] = -params.outside_switch
+                elif t.kind == "outside" and t.side == "after":
+                    tr[a, b] = -params.outside_switch
                 continue
-            if t.t_hi < s.t_lo:
-                continue                                   # would move backwards in time
+            # Monotone order on state *rank*, not on intervals. Two touching intervals are
+            # pairwise compatible at their shared instant, but a chain of such pairs can walk
+            # backwards through a whole week (event -> gap -> earlier event), and a first-order
+            # transition cannot carry the time variable that would forbid it. Rank can. The one
+            # exception: a frame after an anchored one may sit later in the anchor's own event,
+            # whose state ranks below the anchor because it starts earlier.
+            if b < a and not (s.kind == "anchor" and t.kind == "event" and t.event == s.event):
+                continue
             v = 0.0
             if a != b:
                 v -= params.state_change
