@@ -7,6 +7,7 @@ reachable off the machine. Routes live under `/api` so the web build can own `/`
     GET  /api/rolls/{key}                           header: window, checks, events, facts, outings
     GET  /api/rolls/{key}/frames                    every frame: assignment, candidates, verdict, override
     GET  /api/rolls/{key}/frames/{n}
+    GET  /api/rolls/{key}/photos?event=N | ?start=&end=   the pool's photos of one event or an instant range
     GET  /api/rolls/{key}/frames/{n}/trail?pad_minutes=   trail points with GPS inside the frame's interval
     PUT  /api/rolls/{key}/frames/{n}/assign         an override or a frame fact; re-solves, returns all frames
     GET  /api/rolls/{key}/facts
@@ -198,6 +199,27 @@ def create_app(store: Store | None = None) -> FastAPI:
         r = run_for(key)
         return frame_json(r, frame_index(r, n))
 
+    @app.get("/api/rolls/{key}/photos")
+    def roll_photos(key: str, event: int | None = Query(None), start: str | None = Query(None), end: str | None = Query(None),
+                    limit: int = Query(200, ge=1, le=1000)) -> list[dict]:
+        """Phone photos in the roll's pool: one event, or an instant range — for picking any photo as the anchor."""
+        r = run_for(key)
+        if event is None and not (start and end):
+            raise HTTPException(422, "give ?event=N or ?start=ISO&end=ISO")
+        # A "+" in an offset arrives as a space unless the client encoded it; take both.
+        lo = datetime.fromisoformat(start.replace(" ", "+")) if start else None
+        hi = datetime.fromisoformat(end.replace(" ", "+")) if end else None
+        out = []
+        for a, e in zip(r.pool, r.event_ids):
+            if event is not None and e != event:
+                continue
+            if lo is not None and hi is not None and not (lo <= a.date <= hi):
+                continue
+            out.append(_photo(a, r) | {"event": e})
+            if len(out) >= limit:
+                break
+        return out
+
     @app.get("/api/rolls/{key}/frames/{n}/trail")
     def frame_trail(key: str, n: int, pad_minutes: int = Query(0, ge=0, le=1440)) -> list[dict]:
         """Trail points with a location inside the frame's interval (padded), for the map."""
@@ -232,9 +254,15 @@ def create_app(store: Store | None = None) -> FastAPI:
             o.no_reference = body.no_reference
             if body.no_reference:
                 o.anchor = None
+        fact_fields = (body.when, body.lat, body.lon, body.radius_m, body.place_name, body.same_day_as, body.skip, body.note)
+        changed = body.unlock or body.anchor is not None or bool(body.reject) or body.no_reference is not None \
+            or any(x is not None for x in fact_fields)
         if body.confirmed is not None:
             o.confirmed = body.confirmed
-        fact_fields = (body.when, body.lat, body.lon, body.radius_m, body.place_name, body.same_day_as, body.skip, body.note)
+        elif changed:
+            o.confirmed = False          # a confirmation is of an assignment; a new assignment needs a new one
+        if body.skip:
+            o.anchor, o.no_reference = None, False   # "unknown" means no photo, not a locked one
         if any(x is not None for x in fact_fields):
             ff = facts.frame(n)
             if body.when is not None:

@@ -211,3 +211,38 @@ frame between two days, one click placing it; a click on the zoomed band setting
 the minute under the cursor; the trail endpoint's points inside the interval. Tiles could
 not be seen rendering from the sandboxed browser pane, only the attribution they bring —
 worth a look from Terminal.app.
+
+## COO-124 — overrides, locking, live re-solve, keyboard
+
+Landed 4 September 2026. `web/src/components/{PhotoBrowser,Keys}.tsx`, an action bar in
+`FrameDetail`, a "not a match" on every candidate card, the keyboard layer in `RollPage`,
+one new route (`GET …/photos?event=N | ?start=&end=`), two rules in the assign handler,
+76 tests.
+
+### Every decision, one round trip
+
+Pick a candidate (button or `1`–`9`), pick **any** phone photo (click an event bar on the
+timeline: its photos open in a grid, one click anchors the frame to it), type a time, click
+the timeline, drag the pin or pick a cluster, "not a match" (`n`, or per card), "no
+reference" (`N`), "unknown" (`x`), confirm (`Enter`, again to unconfirm), unlock (`u`).
+Each goes through `PUT …/assign`; the API re-solves the roll and returns every frame, and
+the filmstrip, timeline, map and neighbours update from that one response. `?` shows the
+keys; keys are ignored while an input has focus.
+
+### Two rules the keyboard made obvious
+
+* **"Unknown" drops the pick.** A skip on a frame the user had already anchored did nothing:
+  the locked anchor pruned every other state, and the uniform "skipped" emission had one
+  state to be uniform over. The assign handler now clears the pick (and "no reference") when
+  `skip` is set — "unknown" means no photo, not a locked one.
+* **A confirmation is of an assignment.** Rejecting the chosen photo after confirming left
+  the frame confirmed with a different answer. Any change to the matching or the facts now
+  clears `confirmed` unless the same request sets it; the batch actions in COO-126 build on
+  the same flag.
+
+Also: unlock is offered whenever the frame carries any decision or fact (a rejection alone
+does not pin the frame but is still the user's), not only when it is locked.
+
+Verified in the browser on the synthetic roll: `j`/`k`, `2` (locks), `Enter` (confirms),
+`n` (rejects, leaves the frame interpolated with the card marked), `u`, the photo browser
+from an event bar and a pick from it, `x`, `?`.

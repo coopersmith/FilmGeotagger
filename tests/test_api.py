@@ -165,6 +165,21 @@ def test_frame_trail_is_the_points_inside_the_interval(client):
     assert client.get(f"/api/rolls/{KEY}/frames/9/trail").status_code == 404
 
 
+def test_roll_photos_by_event_or_range(client):
+    by_event = client.get(f"/api/rolls/{KEY}/photos?event=1").json()
+    assert [p["uuid"] for p in by_event] == ["P04", "P05", "P06", "P07"] and by_event[0]["event"] == 1
+    assert by_event[0]["image"] == "/api/photos/P04/image"
+    from urllib.parse import quote
+
+    rng = client.get(f"/api/rolls/{KEY}/photos?start={quote(at(2, 9, 10).isoformat())}&end={quote(at(2, 9, 50).isoformat())}").json()
+    assert [p["uuid"] for p in rng] == ["P01", "P02"]
+    assert client.get(f"/api/rolls/{KEY}/photos").status_code == 422
+    assert len(client.get(f"/api/rolls/{KEY}/photos?event=1&limit=2").json()) == 2
+    # Any pool photo, not only a shortlisted one, can be the anchor.
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"anchor": "P04"}).json())
+    assert f[2]["source"] == "locked" and f[2]["anchor"]["uuid"] == "P04"
+
+
 # -- thumbnails ------------------------------------------------------------------------------
 
 
@@ -258,6 +273,13 @@ def test_pin_skip_and_confirm(client):
     assert f[1]["status"] == "confirmed" and f[1]["source"] == "anchored"
     assert client.get(f"/api/rolls/{KEY}").json()["confirmed"] == 1
     assert client.get("/api/rolls").json()[0]["confirmed"] == 1
+    # A confirmation is of an assignment: changing the assignment drops it.
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/1/assign", json={"reject": ["P01"]}).json())
+    assert f[1]["status"] == "proposed" and f[1]["source"] == "interpolated"
+    # "unknown" on a picked frame drops the pick rather than locking the skip to it.
+    client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"anchor": "P06"})
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"skip": True}).json())
+    assert f[3]["source"] == "skipped" and f[3]["override"] is None
 
 
 def test_a_contradicting_lock_is_refused_and_nothing_persists(client, store):

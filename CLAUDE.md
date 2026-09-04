@@ -40,7 +40,10 @@ frame detail, candidate strip, time editor; `npm run build` → `web/dist`, moun
 is done; times in the UI are always rendered from the ISO instant plus the frame's `tzoffset`,
 never the photo's zone. COO-123 (MapLibre map with draggable pin, trail and clusters;
 two-band timeline with click-to-set-time) is done; a user pin is now the frame's location and
-an interpolation anchor in `geo.place`. Next: COO-124 (overrides, keyboard), COO-125, COO-126.
+an interpolation anchor in `geo.place`. COO-124 (every override through `PUT …/assign`:
+any-photo picker from the timeline's event bars, not-a-match, no-reference, unknown, confirm,
+unlock, keys `j k 1-9 Enter n N x u ?`) is done; "unknown" drops a pick and any change
+unconfirms. Next: COO-125 (facts editing), COO-126 (batch confirm).
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:

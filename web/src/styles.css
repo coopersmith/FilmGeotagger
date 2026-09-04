@@ -156,6 +156,31 @@ a { color: var(--safelight); }
 .cand__meta { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
 .cand__flags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; margin-top: 2px; }
 .btn--use { font-size: 11.5px; padding: 5px 8px; }
+.btn--on { background: rgba(124, 196, 127, 0.16); border-color: rgba(124, 196, 127, 0.6); }
+.cand__actions { display: flex; flex-direction: column; gap: 4px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* ---- photo browser ---- */
+.browser { grid-column: 1 / -1; padding: 12px 14px; background: var(--ink-2); border: 1px solid var(--safelight-dim); border-radius: 6px; }
+.browser__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 10px; font-size: 12.5px; }
+.browser__grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; max-height: 420px; overflow-y: auto; }
+.photo button { width: 100%; display: flex; flex-direction: column; gap: 4px; padding: 5px; background: var(--ink); border: 1px solid var(--line); border-radius: 4px; cursor: pointer; text-align: left; font-size: 11px; }
+.photo button:hover:not(:disabled) { border-color: var(--safelight); }
+.photo button:disabled { cursor: default; }
+.photo.is-chosen button { border-color: var(--safelight); box-shadow: 0 0 0 2px rgba(240, 166, 58, 0.2); }
+.photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 2px; background: var(--ink-3); }
+.tl__event { cursor: pointer; }
+.tl__event:hover { fill: #8a7a62; }
+.tl__event.is-browsing { fill: var(--lock); }
+
+/* ---- keys ---- */
+.keys__toggle { position: fixed; right: 16px; bottom: 16px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--ink-2); color: var(--paper-dim); cursor: pointer; z-index: 20; }
+.keys { position: fixed; inset: 0; background: rgba(6, 5, 4, 0.7); display: flex; align-items: center; justify-content: center; z-index: 30; }
+.keys__sheet { background: var(--ink-2); border: 1px solid var(--safelight-dim); border-radius: 8px; padding: 18px 22px; min-width: 360px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); }
+.keys__sheet dl { margin: 10px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; }
+.keys__sheet dl div { display: contents; }
+.keys__sheet dt { color: var(--safelight); }
+.keys__sheet dd { margin: 0; font-size: 13px; }
 
 /* ---- map ---- */
 .map { display: flex; flex-direction: column; gap: 8px; }

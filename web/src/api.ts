@@ -203,6 +203,14 @@ export const useRoll = (key: string | null) =>
 export const useFrames = (key: string | null) =>
   useQuery({ queryKey: ["frames", key], queryFn: () => request<Frame[]>(`/api/rolls/${encodeURIComponent(key!)}/frames`), enabled: !!key });
 
+/** The pool's photos of one event, for picking any phone photo as the anchor. */
+export const usePhotos = (key: string, event: number | null) =>
+  useQuery({
+    queryKey: ["photos", key, event],
+    queryFn: () => request<(Photo & { event: number })[]>(`/api/rolls/${encodeURIComponent(key)}/photos?event=${event}`),
+    enabled: event !== null,
+  });
+
 /** Trail points with GPS inside a frame's interval, padded so the map has context. */
 export const useTrail = (key: string, number: number, padMinutes = 0) =>
   useQuery({

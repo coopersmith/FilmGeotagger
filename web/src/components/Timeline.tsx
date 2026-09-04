@@ -10,6 +10,8 @@ interface Props {
   busy: boolean;
   onSelect: (n: number) => void;
   onSetTime: (iso: string) => void;
+  onEvent?: (index: number) => void;
+  browsing?: number | null;
 }
 
 const W = 720;
@@ -43,7 +45,7 @@ function ticks(lo: number, hi: number, tzoffset: number): { t: number; label: st
 }
 
 /** The window as a strip: events as bars, frames as ticks at their assigned times, the selected frame's interval lit. */
-export function Timeline({ roll, frames, selected, trail, busy, onSelect, onSetTime }: Props) {
+export function Timeline({ roll, frames, selected, trail, busy, onSelect, onSetTime, onEvent, browsing = null }: Props) {
   const tz = selected.tzoffset ?? 0;
   const win = { lo: ms(roll.window.start), hi: ms(roll.window.end) };
   const ivl = { lo: ms(selected.t_lo), hi: ms(selected.t_hi) };
@@ -74,6 +76,17 @@ export function Timeline({ roll, frames, selected, trail, busy, onSelect, onSetT
     return (
       <g>
         <rect x={0} y={y0} width={W} height={h} className="tl__bg" />
+        {/* click-to-set overlay, under the events and frame ticks so those stay clickable */}
+        <rect
+          x={0}
+          y={y0}
+          width={W}
+          height={h}
+          className="tl__hit"
+          onMouseMove={(e) => setHover({ x: b.x(timeAt(e, b.range)), t: timeAt(e, b.range) })}
+          onMouseLeave={() => setHover(null)}
+          onClick={(e) => !busy && onSetTime(isoAt(timeAt(e, b.range), tz))}
+        />
         {/* the selected frame's interval */}
         <rect x={b.x(ivl.lo)} y={y0} width={Math.max(2, b.x(ivl.hi) - b.x(ivl.lo))} height={h} className="tl__interval" />
         {/* day / hour ticks */}
@@ -93,9 +106,20 @@ export function Timeline({ roll, frames, selected, trail, busy, onSelect, onSetT
             const w = Math.max(2, b.x(ms(e.end)) - x);
             const bh = Math.max(3, (evH * Math.log1p(e.count)) / Math.log1p(maxCount));
             return (
-              <rect key={e.index} x={x} y={evY + evH - bh} width={w} height={bh} className={`tl__event ${e.index === selected.event ? "is-current" : ""}`}>
+              <rect
+                key={e.index}
+                x={x}
+                y={evY + evH - bh}
+                width={w}
+                height={bh}
+                className={`tl__event ${e.index === selected.event ? "is-current" : ""} ${e.index === browsing ? "is-browsing" : ""}`}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  onEvent?.(e.index);
+                }}
+              >
                 <title>
-                  event {e.index}: {e.count} photos, {fmtShort(e.start, tz)} – {fmtShort(e.end, tz)}
+                  event {e.index}: {e.count} photos, {fmtShort(e.start, tz)} – {fmtShort(e.end, tz)} — click to browse its photos
                 </title>
               </rect>
             );
@@ -113,7 +137,14 @@ export function Timeline({ roll, frames, selected, trail, busy, onSelect, onSetT
         {frames
           .filter((f) => ms(f.time) >= b.range.lo && ms(f.time) <= b.range.hi)
           .map((f) => (
-            <g key={f.number} className={`tl__frame band-${confidenceBand(f.confidence, f.locked)} ${f.number === selected.number ? "is-selected" : ""}`} onClick={() => onSelect(f.number)}>
+            <g
+              key={f.number}
+              className={`tl__frame band-${confidenceBand(f.confidence, f.locked)} ${f.number === selected.number ? "is-selected" : ""}`}
+              onClick={(ev) => {
+                ev.stopPropagation();
+                onSelect(f.number);
+              }}
+            >
               <line x1={b.x(ms(f.time))} x2={b.x(ms(f.time))} y1={y0 + h - 26} y2={y0 + h - 4} />
               {(zoomed || f.number === selected.number) && (
                 <text x={b.x(ms(f.time))} y={y0 + h - 28} textAnchor="middle">
@@ -125,17 +156,6 @@ export function Timeline({ roll, frames, selected, trail, busy, onSelect, onSetT
               </title>
             </g>
           ))}
-        {/* click-to-set overlay */}
-        <rect
-          x={0}
-          y={y0}
-          width={W}
-          height={h}
-          className="tl__hit"
-          onMouseMove={(e) => setHover({ x: b.x(timeAt(e, b.range)), t: timeAt(e, b.range) })}
-          onMouseLeave={() => setHover(null)}
-          onClick={(e) => !busy && onSetTime(isoAt(timeAt(e, b.range), tz))}
-        />
         {hover && hover.t >= b.range.lo && hover.t <= b.range.hi && (
           <g className="tl__hover">
             <line x1={b.x(hover.t)} x2={b.x(hover.t)} y1={y0} y2={y0 + h} />
