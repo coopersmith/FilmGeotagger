@@ -167,3 +167,47 @@ GPS" locks a frame and squeezes its neighbours, "set time" produces the fact and
 and timeline (COO-123), keyboard and the remaining overrides (COO-124), facts editing
 (COO-125) and batch confirm (COO-126) are the next issues; the right-hand column is reserved
 for the map and timeline.
+
+## COO-123 — map and timeline panes
+
+Landed 4 September 2026. `web/src/components/{MapPane,Timeline}.tsx`, one new API route
+(`GET …/frames/{n}/trail?pad_minutes=`), a user-pin rule in `geo.place`, 75 tests.
+
+### Map
+
+MapLibre GL on OpenFreeMap's key-free vector tiles (`liberty`), with a blank ground as the
+fallback when the tile host is unreachable, so the pin, trail and clusters still draw offline.
+Per frame: the pin (amber when the solver placed it, blue when the user did), draggable —
+dropping it sends a place fact; the trail points inside the frame's interval, padded by
+30 minutes, as dots with a popup; and for an ambiguous frame, the clusters the solver offers
+as numbered discs with their photo counts, one click placing the frame at the cluster's
+centroid with the cluster's spread as radius and its label as the place name. The viewport
+fits whatever is drawn. Markers are DOM and never wait for the style: the first version
+gated everything on `isStyleLoaded()`, which is false while tiles stream in even after `load`
+has fired, so nothing ever appeared.
+
+### Timeline
+
+Two bands in one SVG. The top band is the whole window: events as bars (height by log photo
+count, the current frame's event lit), every frame as a tick coloured by its confidence band,
+the selected frame's interval as a translucent stripe, day gridlines. The bottom band zooms
+to the selected frame's interval padded by a third, with hour ticks, frame numbers, and the
+trail points as dots along the bottom. Hovering shows the instant under the cursor;
+**clicking either band sets the frame's time by hand** — a `when` fact at that minute, in
+the frame's own offset. Ticks are computed in the frame's local wall clock, so midnight lines
+fall on midnight.
+
+### The engine gap the map exposed
+
+Clicking a cluster locked the frame (the place fact is a constraint) but left it
+"ambiguous" with no pin: `geo.place` located frames from anchors and the trail only and knew
+nothing about the user's pins. PLAN.md lists "known place (map pin or place name)" as a
+per-frame fact, so a pin now *is* the frame's location (`location_source` "user") and
+counts as an anchor for interpolating its neighbours, the same way a verified photo does.
+The API passes the frame facts' places through as `pins`.
+
+Verified in the browser on the synthetic roll: three clusters offered for an interpolated
+frame between two days, one click placing it; a click on the zoomed band setting a frame to
+the minute under the cursor; the trail endpoint's points inside the interval. Tiles could
+not be seen rendering from the sandboxed browser pane, only the attribution they bring —
+worth a look from Terminal.app.

@@ -54,7 +54,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
       {loading && <p className="muted pad">Building this roll — library, vectors, solve…</p>}
       {error && <p className="error pad">{String((error as Error).message ?? error)}</p>}
       {list.length > 0 && <Filmstrip frames={list} selected={current?.number ?? null} onSelect={setSelected} />}
-      {current && r && <FrameDetail rollKey={rollKey} frame={current} frames={list} roll={r} />}
+      {current && r && <FrameDetail rollKey={rollKey} frame={current} frames={list} roll={r} onSelect={setSelected} />}
     </div>
   );
 }
