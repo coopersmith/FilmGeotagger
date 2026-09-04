@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import numpy as np
@@ -438,6 +438,30 @@ def build_transitions(states: list[State], params: AlignParams) -> np.ndarray:
     return tr
 
 
+def anchored_days(anchors: list[Anchor], constraints: list[Constraint]) -> list[Constraint]:
+    """"Same day as frame N" where N is anchored: N's day, as a constraint, for `frame_bounds` to spread.
+
+    `frame_bounds` propagates a shared day only from a *dated* frame, and an anchored frame is
+    dated by a verdict rather than a fact. Saying "frame 4 is the same day as frame 3" when
+    frame 3 shows 4 April is the most natural fact of all (review feedback), so every anchored
+    frame that takes part in a same-day pair contributes its local calendar day here. The day
+    is read in the photo's own offset, so a UTC-dated camera still yields the right day.
+    """
+    partners: set[int] = set()
+    for c in constraints:
+        if c.scope == "frame" and c.frame and c.same_day_as:
+            partners.update((c.frame, c.same_day_as))
+    out: list[Constraint] = []
+    for a in anchors:
+        n = a.frame + 1
+        if n not in partners:
+            continue
+        t = a.time if a.tzoffset is None else a.time.astimezone(timezone(timedelta(seconds=a.tzoffset)))
+        day = t.replace(hour=0, minute=0, second=0, microsecond=0)
+        out.append(Constraint("frame", "anchor", frame=n, t_lo=day, t_hi=day + timedelta(days=1), note="anchored day"))
+    return out
+
+
 # ---------------------------------------------------------------------------------------
 
 
@@ -455,6 +479,7 @@ def build_model(
 ) -> RollModel:
     params = params or AlignParams()
     anchors = [a for a in (anchors or []) if a.locked or a.confidence >= params.min_anchor_confidence]
+    constraints = list(constraints or []) + anchored_days(anchors, constraints or [])
     states = build_states(window, events, anchors)
     em, skipped = build_emissions(states, n_frames, params, anchors, events, sims, event_ids, clues, constraints, window)
     tr = build_transitions(states, params)

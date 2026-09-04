@@ -53,8 +53,11 @@ Two issues came out of the first real review session: COO-149 (candidates *insid
 frame's interval — `pipeline.possible_candidates`, `possible` in the API, the strip leads
 with them and folds the month-wide shortlist under "what Claude saw"; `filmgeo verify
 --inside` is the second round on the unanchored frames, ~$0.16 for the ten-frame roll) and
-COO-150 (the guided flow: a "next" strip, one question per frame, first-run steps).
-Then M4, the write step (COO-127 first), which reads `.filmgeo/assignments/<roll>.json` and
+COO-150 (the guided flow: `review.ts` derives the roll's condition and next action; a
+"next" strip with the bulk confirms under "more", one question per frame with the ways
+forward as buttons, time and facts folded, a five-step welcome; `.` jumps to the next frame
+that needs you; "same day as" an anchored frame now binds to its day via
+`model.anchored_days`). Both done. Then M4, the write step (COO-127 first), which reads `.filmgeo/assignments/<roll>.json` and
 requires `status: confirmed`.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will

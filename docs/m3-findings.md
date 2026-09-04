@@ -352,3 +352,40 @@ so and points at the three ways out: same day as a neighbour, a typed time, no r
 this roll that is 4 frames and 28 images, about $0.16, against $2.52 for the first round.
 The loop the tool now supports is: verify, align, add what you know, `verify --inside`,
 align, confirm. Not yet run on a real roll — it costs money and needs Terminal.app.
+
+## COO-150 — the guided flow
+
+From the same review session: "it's overwhelming, it's not clear what to do first or what I
+need to do to be successful." Fair. The page showed every control at once and never said
+where the roll stood.
+
+### What changed
+
+* **A "next" strip** under the filmstrip (`review.ts`, `NextStrip.tsx`): the roll's
+  condition in one sentence and the one thing to do, derived from the frames — nothing
+  verified yet → run `verify` (with the cost); window doubtful → roll facts; green frames
+  unconfirmed → "confirm the 2 green frames, then look at frames 2, 3, 4" with a button that
+  does it; only reds left → pick a photo, same day as a neighbour, or `verify --inside` with
+  its cost; all confirmed → done, writing is the next milestone. "Next: frame 04" jumps to
+  the first frame that needs you, `.` does the same from the keyboard. The bulk confirms
+  and the shift-click range moved in here under "more".
+* **One question per frame** (`Question.tsx`) at the top of the detail: an anchored frame
+  asks "Is this the right photo?" with Claude's sentence beside it and three answers; a
+  locked frame asks "keep it?"; an open frame says where it was shot ("between frame 1 (2 Apr
+  05:20) and frame 5 (9 Apr 08:20)") and offers the ways forward — pick a possible photo,
+  **same day as frame 1** / frame 5 as one-click buttons, type a time, leave it here, skip.
+  The time editor and the frame facts fold away under disclosures that open themselves when
+  the frame carries a fact.
+* **The five steps** (`Welcome.tsx`): tell it when, let Claude look, confirm the greens,
+  resolve the rest, write — ticked from the roll's own state, shown until "got it", back
+  through "how it works" in the header.
+
+### Same day as an anchored frame
+
+The one-click "same day as frame 1" did nothing on the first try. COO-125's propagation
+reads a shared day only from a frame *dated by a fact*, and frame 1 is dated by a verdict.
+That is exactly the fact a person wants to state — "it's the same day as that one, which
+Claude got right" — so `build_model` now derives a day constraint from every anchored frame
+that takes part in a same-day pair (`anchored_days`), in the photo's own offset, and
+`frame_bounds` spreads it as before. Frame 2 of the synthetic roll goes from "between 2 Apr
+04:50 and 9 Apr 08:00" to day 2, and its possible photos shrink with it.

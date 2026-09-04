@@ -38,7 +38,7 @@ export function CandidateStrip({ frame, frames, busy, error, onPick, onReject }:
         <span className="muted">
           {anchored
             ? `the chosen photo and the others from the same occasion, ${fmtShort(frame.t_lo, frame.tzoffset)} – ${fmtClock(frame.t_hi, frame.tzoffset)}`
-            : `${possible.length ? possible.length : "no"} phone photos ${bounds}, one per occasion, most similar first`}
+            : `${possible.length ? possible.length : "no"} phone photos between ${fmtShort(frame.t_lo, frame.tzoffset)} and ${fmtShort(frame.t_hi, frame.tzoffset)} (${bounds}), one per occasion, most similar first`}
         </span>
         {busy && <span className="muted">re-solving…</span>}
         {error && <span className="error">{error}</span>}
