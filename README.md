@@ -10,11 +10,10 @@ Status is tracked in the
 
 ## Status
 
-M0 (write-path proof), M1 (matching-quality harness) and M2 (alignment engine) are complete.
-Findings: [docs/m0-findings.md](docs/m0-findings.md), [docs/m1-findings.md](docs/m1-findings.md),
-[docs/m2-findings.md](docs/m2-findings.md). M3 (review UI) is in progress: the local API and
-the React app's filmstrip, frame detail, candidate strip, map, timeline, overrides,
-keyboard and facts editing are in ([docs/m3-findings.md](docs/m3-findings.md)); batch confirm is next.
+M0 (write-path proof), M1 (matching-quality harness), M2 (alignment engine) and M3 (review UI)
+are complete. Findings: [docs/m0-findings.md](docs/m0-findings.md),
+[docs/m1-findings.md](docs/m1-findings.md), [docs/m2-findings.md](docs/m2-findings.md),
+[docs/m3-findings.md](docs/m3-findings.md). M4 (the write step) is next.
 
 ```bash
 filmgeo index                 # read the Photos library into the local cache (slow when cold)

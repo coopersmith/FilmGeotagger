@@ -281,3 +281,40 @@ Verified in the browser on the synthetic roll: saving camera and film puts them 
 header; moving the window to 1–5 April rebuilds the pool, drops the day-9 anchor and raises
 the doubtful-window warning; widening writes 1 March – 6 May; a frame fact of "2026-04-02"
 locks the frame to that day.
+
+## COO-126 — batch confirm
+
+Landed 4 September 2026. `POST /api/rolls/{key}/confirm`, `web/src/components/BatchBar.tsx`,
+shift-click ranges on the filmstrip, 79 tests.
+
+A bar under the filmstrip: **all ≥ 0.8** (with the count it would add), **whole roll**,
+**frames N–M** and **unconfirm N–M** for a range chosen by shift-clicking the filmstrip from
+the selected frame, and **unconfirm all**. One route takes an explicit list, a confidence
+floor, or neither for the whole roll, and the flag `confirmed` in the overrides file; a
+skipped frame is never confirmed. The assignments file carries it as `status` per frame,
+which is what M4's write step will require, and the roll list and header count it.
+
+Confirmation is of an assignment (COO-124's rule), so changing one frame in a confirmed
+range drops that frame's confirmation and no other. Confirming does not re-solve anything —
+it goes through the same store update so the three files stay consistent, and it costs a
+few milliseconds.
+
+Verified in the browser on the synthetic roll: ≥ 0.8 confirms the two anchored frames,
+shift-click selects 2–4, the range confirms and unconfirms, whole roll, unconfirm all, and
+the header's count follows each step.
+
+## M3 in one paragraph
+
+The review UI exists end to end: `filmgeo serve` on 127.0.0.1 with the React app at `/`,
+one page per roll — filmstrip, frame beside its photo, candidates, Claude's evidence, time
+editor, frame facts, map with pin / trail / clusters, two-band timeline, roll facts drawer
+with rebuild and widen, batch confirm, keyboard. Every decision is one `PUT …/assign` and
+the whole roll re-solves in milliseconds from the cached run. Four engine gaps came out of
+building it, each measured or tested before it was fixed: reversed anchors in one event
+producing non-monotone times (the big one — confidence is now the mass on the occasion),
+a fact minute's exclusive end being written, user pins ignored by `geo.place`, and
+`same_day_as` recorded but never read. Nothing has been written to a scan file yet: that is
+M4, and it starts from the assignments files these pages now keep consistent.
+
+Still to look at from Terminal.app, since the sandboxed browser could not: the map tiles
+over a real roll, and the Photos derivatives loading as thumbnails.

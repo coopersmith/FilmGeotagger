@@ -3,7 +3,15 @@ import type { Frame } from "../api";
 import { confidenceBand, fmtShort } from "../format";
 import { Badges } from "./Badges";
 
-export function Filmstrip({ frames, selected, onSelect }: { frames: Frame[]; selected: number | null; onSelect: (n: number) => void }) {
+interface Props {
+  frames: Frame[];
+  selected: number | null;
+  onSelect: (n: number) => void;
+  range?: [number, number] | null;
+  onRange?: (n: number) => void;   // shift-click: extend the range from the selected frame to this one
+}
+
+export function Filmstrip({ frames, selected, onSelect, range = null, onRange }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>(`[data-frame="${selected}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
@@ -18,8 +26,8 @@ export function Filmstrip({ frames, selected, onSelect }: { frames: Frame[]; sel
             data-frame={f.number}
             role="option"
             aria-selected={f.number === selected}
-            className={`sprocket ${f.number === selected ? "is-selected" : ""} band-${band}`}
-            onClick={() => onSelect(f.number)}
+            className={`sprocket ${f.number === selected ? "is-selected" : ""} ${range && f.number >= range[0] && f.number <= range[1] ? "in-range" : ""} band-${band}`}
+            onClick={(e) => (e.shiftKey && onRange ? onRange(f.number) : onSelect(f.number))}
             title={`frame ${f.number} · ${f.source} · ${fmtShort(f.time, f.tzoffset)}`}
           >
             <span className="sprocket__num mono">{String(f.number).padStart(2, "0")}</span>
