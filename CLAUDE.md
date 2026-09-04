@@ -10,9 +10,12 @@ batch at the end**. Findings per milestone live in `docs/`.
 ## Where things stand
 
 M0 (write-path proof) and M1 (matching-quality harness) are complete and merged.
-M2 (alignment engine) is in progress. COO-117 (`Signal` interface, `user_facts`,
-`photos_trail`, `nfc_log`) is done; next are COO-114/115 (HMM states, emissions, solver).
-`docs/m2-findings.md` has the NFC note format and the facts-window result.
+M2 (alignment engine) is in progress. Done: COO-117 (`Signal` interface, `user_facts`,
+`photos_trail`, `nfc_log`) and COO-114/115 (`align/model.py`, `align/solve.py`: states,
+emissions, Viterbi, forward-backward), COO-116 (`geo.py`: location, clusters, offset).
+Next: COO-118 (reverse test, wrong-window), COO-120 (align CLI + report).
+`docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
+measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
@@ -61,6 +64,7 @@ uv run pytest                        # unit tests (needs `uv sync --extra dev`)
 uv run --extra embed python scripts/eval_m1.py --rolls 9
 uv run --extra embed python scripts/sweep_m1.py --rolls 9 --anchored-only   # cached vectors, seconds
 uv run --extra embed --extra verify python scripts/verify_m1.py 00007044    # costs money (~$1/roll)
+uv run --extra embed python scripts/align_m2.py --rolls 9 --mode oracle    # interval check, free, seconds
 ```
 
 Optional dependency groups: `embed` (torch, open_clip, timm, numpy), `verify` (anthropic, pydantic).

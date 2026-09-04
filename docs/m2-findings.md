@@ -79,3 +79,116 @@ Italy entries that yields +02:00, on the Rhode Island ones −04:00.
 Every non-film asset in the window is a trail point, including the ones without a local
 derivative and the ones without GPS — a time-only point still carries the offset. April 2026
 gives 2,428 points, 2,068 with GPS, every one at −04:00.
+
+## COO-114 / COO-115 — HMM states, emissions, Viterbi and forward-backward
+
+Landed 3 September 2026. `src/filmgeo/align/model.py`, `align/solve.py`, 14 unit tests on
+synthetic timelines, `scripts/align_m2.py` for the measurement below.
+
+### Shape
+
+States per roll: one anchor state per verified candidate (only its frame may occupy it), one
+state per phone-photo event, one per gap between events (plus the lead-in and tail of the
+window), and a single `outside` state. Sorted by time. A transition is allowed when the next
+state can end no earlier than the current one begins, which is the monotone constraint
+expressed on intervals rather than ranks — it lets two frames share an event, lets an anchored
+frame be followed by frames in the same event, and refuses anything that moves backwards.
+`outside` is reachable from and to anything at a flat cost; its posterior mass is the
+wrong-window signal COO-118 will read.
+
+Emissions are log-probabilities. There is no fitted calibration yet (M1 left it open, COO-140
+refits from confirmations), so `AlignParams` carries a hand-set logistic on SigLIP similarity
+and hand-set floors, each documented at the field. The structure the tests pin down is what
+matters: an anchor beats its own event's similarity, an event with nothing similar still holds
+a floor (the user photographs "often, not always"), gaps and outside sit below that, a
+`time_of_day` clue that contradicts an event's local hours costs a fixed penalty, a
+same-outing pair earns a bonus for staying in one event, and a user fact zeroes out every
+state it excludes — a date fact also zeroes `outside`, and a locked frame prunes everything
+but its anchor. Constraints that leave a frame with no state raise instead of solving.
+
+The solver runs Viterbi for the proposal and forward-backward for the posterior. Confidence is
+the posterior mass on the chosen state; the interval is the union of the fewest states that
+carry 90% of the mass, then **clipped to the frame's own facts and to the nearest anchored
+frames on either side** — without that clip, a gap state that ends at an anchor's instant
+reports the whole gap. Anchored frames take the anchor's instant exactly; unanchored ones take
+their state's midpoint pulled inside the neighbouring anchors, then everything is forced
+strictly increasing by 2 s so scan order survives in Photos and Lightroom.
+
+### Measured: interpolated intervals contain the truth
+
+`scripts/align_m2.py` simulates verification from the ground truth itself (the frames
+`Roll.anchored()` recovers, whose timestamp matches a phone photo to the second), so the
+solver is measured on its own logic rather than on Claude's precision. Nine rolls, cached
+SigLIP vectors, no API calls. Scored on held-out anchored frames only:
+
+| anchors given | held-out frames | truth inside 90% interval | median abs. error | median width |
+|---|---|---|---|---|
+| every other anchored frame | 54 | **54 / 54** | 23.6 h | 72.5 h |
+| first and last only | 97 | **97 / 97** | 73.3 h | 176 h |
+| none — similarity, events, order | 113 | **112 / 113** | 72.0 h | 199 h |
+
+This is the M2 exit criterion ("anchored frames exact; interpolated intervals contain the true
+time") met on the hand-tagged rolls. Two caveats that the numbers carry:
+
+* **The interval test uses a two-minute tolerance.** Without it, six of 54 held-out frames
+  fall "outside" by one second: the user tagged groups of frames a second apart in Lightroom,
+  not always in scan order, so a frame between two oracle anchors one second apart can sit a
+  second past its clipped interval. That is the ground truth's granularity, not the solver's.
+* **The intervals are wide, and honestly so.** With only the ends anchored, the median
+  interval is a week; the roll that lived in the camera for 22 days (`00007037`) reports three
+  weeks. This is the "between Tue 14:05 and Wed 17:40" output M1 argued for; the width is what
+  verification anchors and outing groups (COO-119) exist to shrink, and it is now measurable.
+
+The proposal beats the all-gap null path by 39-149 log units on every roll, and mean posterior
+mass on `outside` is 0.001-0.031, so the right-window case is clearly separable — the
+wrong-window half of COO-118 still needs the deliberately-wrong-month run.
+
+One roll (`00007044`) ran under its facts window, the whole of April with 2,428 photos in 182
+events, and gave 371 states: solving takes well under a second, so the month-wide windows
+users will actually type are not a performance concern.
+
+## COO-116 — location and offset derivation (`geo.py`)
+
+Landed 3 September 2026. `src/filmgeo/geo.py`, 8 unit tests; `scripts/align_m2.py` now scores
+location and offset as well as time.
+
+### Rules
+
+An anchored frame takes its photo's GPS and offset exactly. For every other frame the trail
+points inside its interval decide: within 300 m of their centroid, that centroid is the pin
+(`ok`, source `trail`); spread wider but the frame lies between two anchors within 2 km of
+each other, the pin is interpolated linearly in time between them (`ok`, `interpolated`);
+otherwise the frame is `ambiguous`, the distinct clusters (greedy, 300 m radius, biggest
+first, carrying any NFC label) are kept for the UI, and **no pin is written**. No trail and no
+close anchors is `none`. The offset comes from the nearest trail point in time; if points in
+the interval disagree, the frame is flagged `offset_disputed` and the nearest still wins.
+
+### Measured on the nine hand-tagged rolls
+
+Held-out anchored frames, the user's hand-copied GPS as the answer, phone-photo trail only:
+
+| anchors given | ok | ambiguous | none | truth among offered clusters | truth is the top cluster | offset right |
+|---|---|---|---|---|---|---|
+| every other anchored frame | 24 / 54 | 28 | 2 | 28 / 28 | 22 / 28 | 54 / 54 |
+| first and last only | 0 / 97 | 97 | 0 | 96 / 96 | 90 / 96 | 97 / 97 |
+| none | 0 / 113 | 113 | 0 | 112 / 112 | 105 / 112 | 113 / 113 |
+
+Three things follow.
+
+**The offset is a solved problem on this data.** Every held-out frame got the right UTC
+offset in every mode, because the nearest phone photo in time always carried it. Travel days
+are not in the 2026 batch; `offset_disputed` exists for them and is unexercised.
+
+**A pin is only ever written when it is right.** The 24 `ok` frames sit at 0.00 km median
+error (they are interpolations between anchors seconds apart, or tight trail centroids), and
+the derivation refused to guess on the other 30. With only the ends anchored, or nothing,
+*every* frame is ambiguous: a week-wide interval spans many places, and the design says so
+rather than picking one.
+
+**"Ambiguous" is a four-way pick, and the first option is usually right.** The true place was
+within 500 m of an offered cluster on 236 of 236 ambiguous frames, and it was the biggest
+cluster on 79-94% of them, with a median of four clusters offered. That reshapes the M3 UI:
+an ambiguous frame is not a blank map but a short list with a strong default, and "confirm
+top cluster" will resolve most of them in one keystroke. It also says the trail is
+informative even without anchors — the user photographs where they are — so a cluster
+prior for the solver's gap states is worth trying later.

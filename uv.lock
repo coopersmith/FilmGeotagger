@@ -453,6 +453,7 @@ name = "filmgeo"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "numpy" },
     { name = "osxphotos" },
     { name = "pillow" },
     { name = "rich" },
@@ -477,6 +478,7 @@ verify = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'verify'", specifier = ">=1.3.0" },
+    { name = "numpy", specifier = ">=2.5.2" },
     { name = "numpy", marker = "extra == 'embed'", specifier = ">=2.5.2" },
     { name = "open-clip-torch", marker = "extra == 'embed'", specifier = ">=3.3.0" },
     { name = "osxphotos", specifier = ">=0.76" },
