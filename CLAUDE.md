@@ -19,9 +19,10 @@ their occasion, not the photo's second: 36/37 and 10/10 frames inside their inte
 verified rolls). COO-146 (retrieval on the honest ground truth) settled the retrieval question:
 **SigLIP finds the scene, not the shot** — the exact anchor photo ranks median 10th inside its
 own event and no K or cap under $6.72/roll retrieves it for more than a fifth of frames, while
-occasion-level recall rises with K at cap 1 (66% @8, 74% @12, 89% @24). Recommendation K=12,
-cap 1 for verification, unconfirmed until re-verified; `config.py` unchanged. COO-119 (outing
-pass) is built and awaits a Terminal.app run.
+occasion-level recall rises with K at cap 1 (66% @8, 74% @12, 89% @24). Re-verified at K=12 /
+cap 1: wrong-day accepts fell 6/28 → 3/28, so those are the defaults now ($2.52/roll).
+COO-119 (outing pass) groups well but its transition bonus hurt (median error 1.7 h → 14.8 h)
+and defaults to 0; using groups as joint day constraints is COO-147. **M2 is complete.**
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 

@@ -362,8 +362,8 @@ def _require_readable(*paths: str | None) -> None:
 @app.command()
 def verify(
     roll: str = typer.Argument(..., help="scan folder, or a hand-tagged roll key"),
-    k: int = typer.Option(6, help="candidates shown to Claude per frame"),
-    cap: int = typer.Option(3, help="at most this many candidates per phone-photo event (0 = no cap); COO-146 recommends 1"),
+    k: int = typer.Option(12, help="candidates shown to Claude per frame (COO-146: 12)"),
+    cap: int = typer.Option(1, help="at most this many candidates per phone-photo event (0 = no cap; COO-146: 1)"),
     limit: int = typer.Option(0, help="only the first N frames"),
     only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
     widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
@@ -388,7 +388,7 @@ def verify(
             if not fresh:
                 continue
         todo.append((f, shown))
-    est = 0.035 * len(todo)   # $/frame measured in M1 on claude-opus-5 (docs/m1-findings.md)
+    est = 0.035 * len(todo) * k / 6   # $0.035/frame at k=6 on claude-opus-5 (M1), linear in images shown
     console.print(f"[bold]{r.key}[/]: {len(todo)} frames x {k} candidates on {model} — about [bold]${est:.2f}[/] "
                   f"({len(existing)} already verified)")
     if not todo:

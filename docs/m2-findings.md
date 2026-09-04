@@ -623,3 +623,52 @@ before embedding, so there is no command to give. If grayscale moves the within-
 trim is the next variant to add (a fixed-fraction crop in `Embedder._load`, cached under its
 own variant name); if grayscale does nothing, the gap is content, not colour, and trim is
 unlikely to help either.
+
+## COO-119 and the K = 12 re-run — what $3.55 of verdicts settled
+
+Run 4 September 2026 from Terminal.app: `filmgeo outing` on both verified rolls ($0.30) and
+`filmgeo verify --k 12 --cap 1` on both, under `-k12` aliases so the K = 6 / cap 3 verdicts
+stayed for comparison ($3.25).
+
+### K = 12 with one photo per event is the better shortlist
+
+| roll | shortlist | accepted | ≤ 30 min | same day | wrong day | at conf ≥ 0.8: accepted / same day |
+|---|---|---|---|---|---|---|
+| `00007037` | K 6 / cap 3 | 20 / 37 | 13 | 17 | 3 | 12 / 12 |
+| `00007037` | **K 12 / cap 1** | 21 / 37 | 13 | 19 | **2** | 14 / 14 |
+| `00007044` | K 6 / cap 3 | 8 / 10 | 2 | 5 | 3 | 5 / 5 |
+| `00007044` | **K 12 / cap 1** | 7 / 10 | 3 | 6 | **1** | 4 / 4 |
+
+Wrong-day accepts fall from 6 of 28 to 3 of 28; every accept at ≥ 0.8 is on the right day in
+both settings. Aligned, the ten-frame roll goes from 4 to 6 anchored frames and from 6 to 8
+frames with a pin; the 22-day roll is unchanged (13 anchored, 36 of 37 inside). The exact
+photo reaches the shortlist no more often (COO-146 predicted that), and Claude's precision
+does not fall when it sees one photo per event, which was the open question. **Defaults are
+now `TOP_K = 12`, `MAX_PER_EVENT = 1`, `verify --k 12 --cap 1`, `MAX_CANDIDATES = 12`**:
+$2.52 a roll instead of $1.68. n is two rolls; the direction agrees with the 35-frame grid.
+
+### The outing pass groups well and the transition bonus does nothing useful
+
+Claude's groups are good descriptions — "grandparents visit: man in a mint polo holding the
+baby on the green couch", "spring walk: Manhattan skyline over the harbour with cyclists at
+the railing" — 15 outings on the 22-day roll, 6 on the ten-frame roll, no out-of-sequence
+flags, and it isolated frame 8 of `00007037` (the one wrong-session anchor) as a group of
+its own at 0.70, which is the right call. The bonus fed by those groups, though, changed
+nothing that matters and one thing for the worse:
+
+| roll | shortlist | bonus | anchored | interpolated inside | median error of interpolated frames |
+|---|---|---|---|---|---|
+| `00007037` | K 6 | off | 13 | 24 / 24 | 1.7 h |
+| `00007037` | K 6 | on (22 pairs) | 13 | 24 / 24 | **14.8 h** |
+| `00007044` | K 12 | off | 6 | 4 / 4 | 44.6 h |
+| `00007044` | K 12 | on (4 pairs) | 5 | 5 / 5 | 70.1 h |
+
+The reason is what the groups *are* on these rolls: on a newborn-at-home roll the outings
+are "who is holding the baby", which is true and says nothing about which day. A pairwise
+"stay in the same event" bonus then pulls frames toward their neighbour's event rather than
+toward the day the evidence favours. So `outing_bonus` defaults to 0 and the pass is kept for
+the review UI (the descriptions are exactly what a person needs to confirm a group) and for
+the out-of-sequence flag. The right use of the groups is as a *joint* constraint — every
+frame in a group shares one day — solved by mapping groups onto days rather than nudging
+frame pairs; that is COO-147, and it is where the "a few outings onto days instead of 36
+frames onto weeks" idea in PLAN.md actually lives.
