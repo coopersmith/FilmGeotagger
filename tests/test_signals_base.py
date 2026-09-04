@@ -85,3 +85,27 @@ def test_collect_merges_and_sorts():
     ev = collect([a, b], Window(dt(1), dt(5)))
     assert [p.source for p in ev.trail] == ["b", "a"]
     assert len(ev.roll_constraints()) == 1
+
+
+def test_same_day_as_takes_the_partner_day_when_one_side_is_dated():
+    from datetime import datetime, timedelta, timezone
+
+    from filmgeo.signals.base import Constraint, Window, frame_bounds
+
+    utc = timezone.utc
+    w = Window(datetime(2026, 4, 1, tzinfo=utc), datetime(2026, 5, 1, tzinfo=utc))
+    day = datetime(2026, 4, 12, tzinfo=utc)
+    cs = [
+        Constraint("frame", "user", frame=3, t_lo=day + timedelta(hours=14), t_hi=day + timedelta(hours=14, minutes=1)),
+        Constraint("frame", "user", frame=5, same_day_as=3),          # after the dated frame
+        Constraint("frame", "user", frame=2, same_day_as=3),          # before it
+        Constraint("frame", "user", frame=7, same_day_as=5),          # a chain: 7 -> 5 -> 3
+    ]
+    b = frame_bounds(cs, 8, w)
+    assert b[4] == (day + timedelta(hours=14), day + timedelta(days=1))     # frame 5: that day, after 14:00 by order
+    assert b[1] == (day, day + timedelta(hours=14, minutes=1))               # frame 2: that day, before frame 3
+    assert b[6] == (day + timedelta(hours=14), day + timedelta(days=1))     # frame 7 through the chain
+    assert b[0] == (w.start, day + timedelta(hours=14, minutes=1))           # frame 1 only bounded by order
+    # Two undated frames sharing a day: nothing to propagate, nothing invented.
+    b2 = frame_bounds([Constraint("frame", "user", frame=2, same_day_as=5)], 6, w)
+    assert b2[1] == (w.start, w.end) and b2[4] == (w.start, w.end)

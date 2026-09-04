@@ -106,6 +106,8 @@ def roll_json(r: RollRun) -> dict:
         for e in r.events
     ]
     base["confirmed"] = sum(1 for o in (r.overrides.frames.values() if r.overrides else ()) if o.confirmed)
+    meta = pipeline.verdicts_meta(r.key)
+    base["cost"] = pipeline.cost_estimate(len(r.verdicts), meta.get("k"), r.outings is not None) | {"model": meta.get("model")}
     return base
 
 

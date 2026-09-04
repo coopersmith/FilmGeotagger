@@ -65,6 +65,29 @@ def load_verdicts(key: str, directory: Path = VERDICTS_DIR) -> dict[int, Verdict
     return {int(n): Verdict(**v) for n, v in raw.get("frames", {}).items()}
 
 
+def verdicts_meta(key: str, directory: Path = VERDICTS_DIR) -> dict:
+    """The run settings `filmgeo verify` recorded beside the verdicts: model, k, cap."""
+    p = directory / f"{key}.json"
+    if not p.exists():
+        return {}
+    raw = json.loads(p.read_text())
+    return {k: v for k, v in raw.items() if k != "frames"}
+
+
+# $0.035 a frame at K = 6 on claude-opus-5 (M1), linear in images shown; the outing pass is
+# one call with a contact sheet, about $0.15 (COO-119). Estimates, not a meter — COO-140
+# builds the real dashboard from logged tokens.
+VERIFY_USD_PER_FRAME_AT_K6 = 0.035
+OUTING_USD = 0.15
+
+
+def cost_estimate(n_verified: int, k: int | None, has_outings: bool) -> dict:
+    k = k or TOP_K
+    verify = VERIFY_USD_PER_FRAME_AT_K6 * n_verified * k / 6
+    return {"verified_frames": n_verified, "k": k, "verify_usd": round(verify, 2),
+            "outing_usd": OUTING_USD if has_outings else 0.0, "usd": round(verify + (OUTING_USD if has_outings else 0.0), 2)}
+
+
 def save_verdicts(key: str, verdicts: dict[int, Verdict], meta: dict, directory: Path = VERDICTS_DIR) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     p = directory / f"{key}.json"

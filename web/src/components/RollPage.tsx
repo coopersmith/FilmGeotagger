@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAssign, useFrames, useRealign, useRoll } from "../api";
 import { fmtDate } from "../format";
+import { FactsPanel } from "./FactsPanel";
 import { Filmstrip } from "./Filmstrip";
 import { FrameDetail } from "./FrameDetail";
 import { isTyping, Keys } from "./Keys";
@@ -11,6 +12,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
   const realign = useRealign(rollKey);
   const assign = useAssign(rollKey);
   const [selected, setSelected] = useState<number | null>(null);
+  const [factsOpen, setFactsOpen] = useState(false);
   const list = frames.data ?? [];
   const current = useMemo(() => list.find((f) => f.number === selected) ?? list[0] ?? null, [list, selected]);
   useEffect(() => {
@@ -94,12 +96,19 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
               </span>
             )}
             {r.reverse.suspect && <span className="pill pill--warn">possibly reverse-wound</span>}
+            <span className="muted" title={`${r.cost.verified_frames} frames verified at K ${r.cost.k}`}>
+              Claude ≈ ${r.cost.usd.toFixed(2)}
+            </span>
+            <button className={`btn btn--ghost ${factsOpen ? "btn--on" : ""}`} onClick={() => setFactsOpen((o) => !o)} title="the window, camera, film, lab, notes; widen and re-run">
+              roll facts
+            </button>
             <button className="btn btn--ghost" disabled={realign.isPending} onClick={() => realign.mutate(false)} title="re-read verdicts and facts from disk and solve again">
               {realign.isPending ? "solving…" : "re-solve"}
             </button>
           </div>
         )}
       </header>
+      {r && factsOpen && <FactsPanel rollKey={rollKey} roll={r} onClose={() => setFactsOpen(false)} />}
       {loading && <p className="muted pad">Building this roll — library, vectors, solve…</p>}
       {error && <p className="error pad">{String((error as Error).message ?? error)}</p>}
       {list.length > 0 && <Filmstrip frames={list} selected={current?.number ?? null} onSelect={setSelected} />}

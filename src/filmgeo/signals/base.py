@@ -186,6 +186,26 @@ def frame_bounds(
             lo[i] = max(lo[i], c.t_lo)
         if c.t_hi is not None:
             hi[i] = min(hi[i], c.t_hi)
+    # "Same day as frame N": when either side of the pair is dated, the other takes that
+    # local calendar day. Two undated frames that merely share a day cannot be expressed as
+    # per-frame bounds — that coupling is a joint constraint (COO-147) and is left alone here.
+    pairs = {(c.frame, c.same_day_as) for c in constraints
+             if c.scope == "frame" and c.frame and c.same_day_as and 1 <= c.same_day_as <= n_frames}
+    changed = True
+    while changed and pairs:
+        changed = False
+        for a, b in list(pairs):
+            for src, dst in ((a, b), (b, a)):
+                i, j = src - 1, dst - 1
+                if (lo[i], hi[i]) == (window.start, window.end):
+                    continue                      # nothing known about the source yet
+                t = lo[i] if lo[i] != window.start else hi[i] - timedelta(seconds=1)
+                day_lo = t.replace(hour=0, minute=0, second=0, microsecond=0)
+                day_hi = day_lo + timedelta(days=1)
+                new_lo, new_hi = max(lo[j], day_lo), min(hi[j], day_hi)
+                if (new_lo, new_hi) != (lo[j], hi[j]):
+                    lo[j], hi[j] = new_lo, new_hi
+                    changed = True
     for i in range(1, n_frames):                 # lower bounds flow forward
         lo[i] = max(lo[i], lo[i - 1])
     for i in range(n_frames - 2, -1, -1):        # upper bounds flow backward

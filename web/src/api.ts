@@ -140,7 +140,10 @@ export interface Roll {
   n_frames: number;
   facts: Facts;
   confirmed: number;
+  cost: { verified_frames: number; k: number; verify_usd: number; outing_usd: number; usd: number; model: string | null };
 }
+
+export type FactsBody = Omit<Facts, "roll" | "frames"> & { frames: Record<string, Partial<FrameFact>> };
 
 export interface RollSummary {
   key: string;
@@ -233,6 +236,22 @@ export function useAssign(key: string) {
   });
 }
 
+/** The whole facts file. A moved window rebuilds the pool (seconds); anything else re-solves in place. */
+export function useSaveFacts(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: FactsBody) =>
+      request<{ facts: Facts; solved: boolean; error: string | null; roll: Roll | null }>(`/api/rolls/${encodeURIComponent(key)}/facts`, { method: "PUT", body: JSON.stringify(body) }),
+    onSuccess: ({ roll }) => {
+      if (roll) qc.setQueryData(["roll", key], roll);
+      qc.invalidateQueries({ queryKey: ["roll", key] });
+      qc.invalidateQueries({ queryKey: ["frames", key] });
+      qc.invalidateQueries({ queryKey: ["trail", key] });
+      qc.invalidateQueries({ queryKey: ["rolls"] });
+    },
+  });
+}
+
 export function useRealign(key: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -241,6 +260,8 @@ export function useRealign(key: string) {
     onSuccess: ({ frames, ...roll }) => {
       qc.setQueryData(["frames", key], frames);
       qc.setQueryData(["roll", key], roll);
+      qc.invalidateQueries({ queryKey: ["trail", key] });
+      qc.invalidateQueries({ queryKey: ["photos", key] });
       qc.invalidateQueries({ queryKey: ["rolls"] });
     },
   });

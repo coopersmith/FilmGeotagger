@@ -148,6 +148,16 @@ def test_roll_header_and_frames(client):
     assert client.get(f"/api/rolls/{KEY}/frames/9").status_code == 404
 
 
+def test_roll_header_estimates_claude_cost(client, monkeypatch):
+    from filmgeo.align import pipeline as pl
+
+    roll = client.get(f"/api/rolls/{KEY}").json()
+    assert roll["cost"] == {"verified_frames": 2, "k": 12, "verify_usd": 0.14, "outing_usd": 0.0, "usd": 0.14, "model": None}
+    monkeypatch.setattr(pl, "verdicts_meta", lambda key: {"k": 6, "model": "m"})
+    roll = client.get(f"/api/rolls/{KEY}").json()
+    assert roll["cost"]["k"] == 6 and roll["cost"]["usd"] == 0.07 and roll["cost"]["model"] == "m"
+
+
 def test_frames_stay_in_scan_order(client):
     frames = client.get(f"/api/rolls/{KEY}/frames").json()
     times = [datetime.fromisoformat(f["time"]) for f in frames]
@@ -269,6 +279,13 @@ def test_pin_skip_and_confirm(client):
     assert f[3]["location"] in ("ambiguous", "none")
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"skip": True}).json())
     assert f[4]["source"] == "skipped"
+    # "same day as" a dated frame binds this frame to that day.
+    client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"unlock": True})
+    client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"unlock": True})
+    client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"when": "2026-04-02"})
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"same_day_as": 3}).json())
+    assert f[4]["locked"] is False or f[4]["fact"]["same_day_as"] == 3
+    assert f[4]["t_hi"] <= datetime(2026, 4, 3, tzinfo=timezone.utc).isoformat() or f[4]["t_hi"].startswith("2026-04-03T00:00")
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/1/assign", json={"confirmed": True}).json())
     assert f[1]["status"] == "confirmed" and f[1]["source"] == "anchored"
     assert client.get(f"/api/rolls/{KEY}").json()["confirmed"] == 1
