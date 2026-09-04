@@ -4,6 +4,7 @@ import { fmtClock, fmtDate, fmtOffset, intervalText } from "../format";
 import { Badges } from "./Badges";
 import { CandidateStrip } from "./CandidateStrip";
 import { MapPane } from "./MapPane";
+import { FrameFacts } from "./FrameFacts";
 import { PhotoBrowser } from "./PhotoBrowser";
 import { TimeEditor } from "./TimeEditor";
 import { Timeline } from "./Timeline";
@@ -80,6 +81,7 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
           {assign.error && <span className="error">{(assign.error as Error).message}</span>}
         </div>
         <TimeEditor rollKey={rollKey} frame={frame} />
+        <FrameFacts rollKey={rollKey} frame={frame} nFrames={frames.length} />
 
         <dl className="kv">
           <dt>interval</dt>

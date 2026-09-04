@@ -246,3 +246,38 @@ does not pin the frame but is still the user's), not only when it is locked.
 Verified in the browser on the synthetic roll: `j`/`k`, `2` (locks), `Enter` (confirms),
 `n` (rejects, leaves the frame interpolated with the card marked), `u`, the photo browser
 from an event bar and a pick from it, `x`, `?`.
+
+## COO-125 — roll facts input
+
+Landed 4 September 2026. `web/src/components/{FactsPanel,FrameFacts}.tsx`, a cost estimate
+in the roll header, "same day as" propagation in `signals.base.frame_bounds`, 78 tests.
+
+### What it is
+
+A **roll facts** drawer under the header: the window as two periods in the facts syntax
+(`2026-04`, `2026-04-12`, `2026-04-12 14:05`) and an optional zone, camera (with the three
+bodies as suggestions), film, lab, notes, the reverse-scan toggle. "Save" writes the facts
+file through `PUT …/facts`; when the window moved the button says so ("save and rebuild")
+because the pool is rebuilt, which takes seconds rather than milliseconds. "Widen ±1 month
+and re-run" writes a month more on each side into the window and rebuilds. Under the fields:
+the window check (doubtful, and why), the best days by posterior mass, and **Claude so far**,
+an estimate from the verdict file's K and the measured $0.035 per frame at K = 6, plus the
+outing pass if one ran — an estimate until COO-140 logs tokens.
+
+A **frame facts** form under the time editor: a known period (a day, a month, a minute), a
+place name for the pin, "same day as frame N", a note. It goes through `assign` like every
+other decision; the pin itself comes from the map.
+
+### "Same day as" was recorded and ignored
+
+The facts file, the CLI and the constraint carried `same_day_as` since COO-117, but nothing
+in `build_emissions` read it. The per-frame case is now in `frame_bounds`: when either side
+of the pair is dated, the other takes that local calendar day, chains included (7 → 5 → 3),
+and the monotone propagation then tightens the frames between. Two undated frames that
+merely share a day cannot be expressed as per-frame bounds in a first-order model; that is
+the joint constraint COO-147 is for, and it is left alone rather than faked.
+
+Verified in the browser on the synthetic roll: saving camera and film puts them in the
+header; moving the window to 1–5 April rebuilds the pool, drops the day-9 anchor and raises
+the doubtful-window warning; widening writes 1 March – 6 May; a frame fact of "2026-04-02"
+locks the frame to that day.

@@ -43,7 +43,10 @@ two-band timeline with click-to-set-time) is done; a user pin is now the frame's
 an interpolation anchor in `geo.place`. COO-124 (every override through `PUT …/assign`:
 any-photo picker from the timeline's event bars, not-a-match, no-reference, unknown, confirm,
 unlock, keys `j k 1-9 Enter n N x u ?`) is done; "unknown" drops a pick and any change
-unconfirms. Next: COO-125 (facts editing), COO-126 (batch confirm).
+unconfirms. COO-125 (roll facts drawer with save / rebuild / widen, frame facts form,
+Claude cost estimate) is done; "same day as frame N" now binds a frame to a dated partner's
+day in `frame_bounds` (two undated frames sharing a day wait for COO-147). Next: COO-126
+(batch confirm), the last M3 issue.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
