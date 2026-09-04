@@ -22,7 +22,9 @@ own event and no K or cap under $6.72/roll retrieves it for more than a fifth of
 occasion-level recall rises with K at cap 1 (66% @8, 74% @12, 89% @24). Re-verified at K=12 /
 cap 1: wrong-day accepts fell 6/28 → 3/28, so those are the defaults now ($2.52/roll).
 COO-119 (outing pass) groups well but its transition bonus hurt (median error 1.7 h → 14.8 h)
-and defaults to 0; using groups as joint day constraints is COO-147. **M2 is complete.**
+and defaults to 0; using groups as joint day constraints is COO-147. Grayscale halves the exact
+photo's rank inside its event (median 10 → 5) but does nothing for occasion recall, so colour
+stays the shortlist and a grayscale second stage is COO-148. **M2 is complete.**
 `docs/m2-findings.md` has the NFC note format, the facts-window result and the interval
 measurement; `scripts/align_m2.py` reproduces the latter without API calls.
 
