@@ -184,7 +184,9 @@ def _assign_times(model: RollModel, path: list[int], intervals: list[tuple[datet
             fixed.append(True)
         else:
             mid = s.t_lo + (s.t_hi - s.t_lo) / 2
-            times.append(min(max(mid, lo), hi))
+            # Intervals are half-open on the right: a fact "14:05" is [14:05, 14:06), and the
+            # written time must not land on the excluded end.
+            times.append(min(max(mid, lo), max(lo, hi - timedelta(seconds=1))))
             fixed.append(False)
     # Force strict ordering with >= 2 s spacing by moving only the unanchored frames: forward
     # so nothing precedes what came before it, then backward so nothing runs into the next

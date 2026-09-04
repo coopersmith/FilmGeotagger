@@ -35,8 +35,10 @@ M3 (review UI) is in progress. Done: COO-121 (`api/`: FastAPI on 127.0.0.1 under
 order were both kept and the written times came out non-monotone on the 22-day roll. Fixed
 with per-anchor head/tail states (`align/model.py`); confidence is now the posterior mass on
 the frame's *occasion*, so anchored frames read 0.9-0.99 instead of ~0.55. Details and the
-before/after table are in `docs/m3-findings.md`. Next: COO-122 (React app), COO-123, COO-124,
-COO-125, COO-126.
+before/after table are in `docs/m3-findings.md`. COO-122 (React app in `web/`: filmstrip,
+frame detail, candidate strip, time editor; `npm run build` → `web/dist`, mounted by `serve`)
+is done; times in the UI are always rendered from the ISO instant plus the frame's `tzoffset`,
+never the photo's zone. Next: COO-123 (map, timeline), COO-124, COO-125, COO-126.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
@@ -56,7 +58,7 @@ otherwise cost you a day:
 
 ## Local setup on this machine
 
-Homebrew, `exiftool`, `uv` and `gh` are installed; `gh auth login` is done, so `git push` works.
+Homebrew, `exiftool`, `uv`, `gh` and `node` (Homebrew) are installed; `gh auth login` is done, so `git push` works.
 `brew` is at `/opt/homebrew/bin`, which is **not** on the default PATH for non-interactive shells —
 prefix commands with `export PATH="/opt/homebrew/bin:$PATH"` or they fail with "command not found".
 
@@ -92,7 +94,8 @@ uv run filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   
 uv run filmgeo signals <roll>        # trail points + constraints from every adapter
 uv run --extra embed filmgeo align <roll>            # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
 uv run --extra embed --extra verify filmgeo verify <roll>   # Claude verdicts -> .filmgeo/verdicts/; costs ~$0.035/frame, asks first
-uv run --extra api --extra embed filmgeo serve [roll...]   # review API on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
+uv run --extra api --extra embed filmgeo serve [roll...]   # review API + UI on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
+(cd web && npm install && npm run build)                  # the UI -> web/dist, which serve mounts at /; `npm run dev` proxies /api to 8765
 uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)
 uv run --extra dev --extra api pytest   # unit + API tests
 
