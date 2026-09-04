@@ -479,5 +479,26 @@ def align(
     console.print(f"wrote {jp} and {hp}")
 
 
+@app.command()
+def serve(
+    rolls: list[str] = typer.Argument(None, help="scan folders or roll keys to open, besides what .filmgeo/ already knows"),
+    host: str = typer.Option("127.0.0.1", help="bind address; keep it local, nothing authenticates"),
+    port: int = typer.Option(8765),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="open the review UI in the default browser"),
+) -> None:
+    """Run the local review API (and the web UI once it is built) on 127.0.0.1.
+
+    Needs `--extra api`; run it from Terminal.app so Photos derivatives are readable.
+    """
+    from filmgeo.api.app import serve as do_serve
+    from filmgeo.api.state import Store
+
+    origins: dict[str, str] = {}
+    for roll in rolls or []:
+        key, _ = _roll_key(roll)
+        origins[key] = roll
+    do_serve(Store(origins=origins), host=host, port=port, open_browser=open_browser)
+
+
 if __name__ == "__main__":
     app()

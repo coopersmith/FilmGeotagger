@@ -88,7 +88,13 @@ def reverse_test(inputs: RollInputs, forward: Solution | None = None, min_anchor
     that lie in the wrong sequence.
     """
     fwd = forward or solve(inputs.build())
-    rev = solve(inputs.reversed().build())
+    try:
+        rev = solve(inputs.reversed().build())
+    except ValueError:
+        # The reversed order can be infeasible under the user's facts and locks (a lock on
+        # frame 4 and a date on frame 3 swap into a contradiction). That is the strongest
+        # possible "not reversed", not an error.
+        return ReverseTest(fwd.log_score, float("-inf"), fwd.anchored, 0, False)
     suspect = rev.log_score > fwd.log_score and rev.anchored >= max(min_anchors, fwd.anchored + extra_anchors)
     return ReverseTest(fwd.log_score, rev.log_score, fwd.anchored, rev.anchored, suspect)
 

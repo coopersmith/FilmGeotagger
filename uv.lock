@@ -440,6 +440,22 @@ wheels = [
 ]
 
 [[package]]
+name = "fastapi"
+version = "0.141.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8a/02/91e3416a8fdd715abb903a952a6bec7cdd8d14eed55d415fc8595524c319/fastapi-0.141.1.tar.gz", hash = "sha256:e8822fc40db1e1858054d7a949a888695bc9bdce70139178e33bd2871a453ca1", size = 425799, upload-time = "2026-07-29T17:18:05.568Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/03/10388a42375ee7e4ac9b94eb2c5c569c8b5795e377e701c9ac3ad63de890/fastapi-0.141.1-py3-none-any.whl", hash = "sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3", size = 131954, upload-time = "2026-07-29T17:18:04.364Z" },
+]
+
+[[package]]
 name = "filelock"
 version = "3.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -461,7 +477,13 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+api = [
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
+]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
 ]
 embed = [
@@ -478,19 +500,23 @@ verify = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'verify'", specifier = ">=1.3.0" },
+    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "numpy", specifier = ">=2.5.2" },
     { name = "numpy", marker = "extra == 'embed'", specifier = ">=2.5.2" },
     { name = "open-clip-torch", marker = "extra == 'embed'", specifier = ">=3.3.0" },
     { name = "osxphotos", specifier = ">=0.76" },
     { name = "pillow", specifier = ">=11" },
+    { name = "pydantic", marker = "extra == 'api'", specifier = ">=2" },
     { name = "pydantic", marker = "extra == 'verify'", specifier = ">=2.13.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "rich", specifier = ">=13" },
     { name = "timm", marker = "extra == 'embed'", specifier = ">=1.0.29" },
     { name = "torch", marker = "extra == 'embed'", specifier = ">=2.14.0" },
     { name = "typer", specifier = ">=0.15" },
+    { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.30" },
 ]
-provides-extras = ["dev", "embed", "verify"]
+provides-extras = ["dev", "embed", "verify", "api"]
 
 [[package]]
 name = "fsspec"
@@ -2181,6 +2207,19 @@ wheels = [
 ]
 
 [[package]]
+name = "starlette"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b5/b4/205b0d5241d934e8add0c38aa924c4f9fb7330834ff11e5444db964ec3f9/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b", size = 2716969, upload-time = "2026-08-08T18:27:57.512Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/cb/6a6a47d5b464bd08695d254f3da6e7986cc70c9fa5d778eda57538edfe56/starlette-1.6.0-py3-none-any.whl", hash = "sha256:a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c", size = 75969, upload-time = "2026-08-08T18:27:56.196Z" },
+]
+
+[[package]]
 name = "strpdatetime"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2431,6 +2470,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1f/85/ef3741a4ac3472a34b15cf8871eb77dd426a5900ebd2e6be9cf449cbf102/utitools-0.5.0.tar.gz", hash = "sha256:5db9e2b3f85982f6844ae4009130c82431332540f066fcf4fe63f31ab54a7d7c", size = 28631, upload-time = "2026-04-18T14:15:37.697Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0d/00/74ff216c295d2e513c26741ed9da6f915db18b333ce756c05a81a7e902cb/utitools-0.5.0-py3-none-any.whl", hash = "sha256:cfabee0037c7e2d98d3bfd9af1eda73d99bad5f32b8d35f58bd94b5545e32713", size = 23034, upload-time = "2026-04-18T14:15:36.018Z" },
+]
+
+[[package]]
+name = "uvicorn"
+version = "0.52.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f2/0f/3f86e61397dd33bf2ccf28188c40db6a740658aeebbbf6e7dbc101a1f487/uvicorn-0.52.4.tar.gz", hash = "sha256:73acfee47a0b133c5de13d219492d62d8a31e935f4fe6e41a232451a15379f86", size = 100627, upload-time = "2026-08-19T06:27:41.821Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f1/79/4a20b54ab0491485ccd8c077db2d39187c7f12b3e15485d38a7be37c81b4/uvicorn-0.52.4-py3-none-any.whl", hash = "sha256:f86e41a149d7d05a9969337e3946a9c171c06a5d42680896daaba624aeac8da1", size = 79871, upload-time = "2026-08-19T06:27:40.36Z" },
 ]
 
 [[package]]

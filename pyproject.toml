@@ -14,7 +14,10 @@ dependencies = [
 [project.optional-dependencies]
 # Added at M1: anthropic, torch, open_clip_torch, timm, numpy
 # Added at M3: fastapi, uvicorn, pydantic
-dev = ["pytest>=8"]
+dev = [
+    "httpx>=0.27",
+    "pytest>=8",
+]
 embed = [
     "numpy>=2.5.2",
     "open-clip-torch>=3.3.0",
@@ -24,6 +27,11 @@ embed = [
 verify = [
     "anthropic>=1.3.0",
     "pydantic>=2.13.5",
+]
+api = [
+    "fastapi>=0.115",
+    "pydantic>=2",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]

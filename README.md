@@ -10,15 +10,19 @@ Status is tracked in the
 
 ## Status
 
-M0 (write-path proof) and M1 (matching-quality harness) are complete.
-Findings: [docs/m0-findings.md](docs/m0-findings.md), [docs/m1-findings.md](docs/m1-findings.md).
-M2 (alignment engine) is next.
+M0 (write-path proof), M1 (matching-quality harness) and M2 (alignment engine) are complete.
+Findings: [docs/m0-findings.md](docs/m0-findings.md), [docs/m1-findings.md](docs/m1-findings.md),
+[docs/m2-findings.md](docs/m2-findings.md). M3 (review UI) is in progress: the local API is
+in ([docs/m3-findings.md](docs/m3-findings.md)); the React app is next.
 
 ```bash
 filmgeo index                 # read the Photos library into the local cache (slow when cold)
 filmgeo rolls                 # hand-tagged rolls available as ground truth
 filmgeo ingest <roll-dir>     # a scan folder as ordered frames
-filmgeo report <roll-key>     # contact sheet -> reports/
+filmgeo facts <roll> --from 2026-04 --to 2026-04 --camera "Mamiya 7II"   # what you know about a roll
+filmgeo align <roll>          # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
+filmgeo verify <roll>         # Claude verdicts (costs money, asks first)
+filmgeo serve [roll...]       # review API on http://127.0.0.1:8765 (needs --extra api)
 ```
 
 Evaluation, which needs `--extra embed` and (for verification) a key in a gitignored `.env`:
