@@ -119,9 +119,11 @@ export function FactsPanel({ rollKey, roll, onClose }: { rollKey: string; roll: 
         <span className="muted">
           best days by posterior mass: {roll.window_check.best_days.map(([d, m]) => `${d.slice(5)} (${m.toFixed(1)})`).join(", ")}
         </span>
-        <span className="muted" title={`${roll.cost.verified_frames} frames × K ${roll.cost.k}${roll.cost.outing_usd ? " + outing pass" : ""}${roll.cost.model ? ` on ${roll.cost.model}` : ""}`}>
-          Claude so far ≈ ${roll.cost.usd.toFixed(2)}
-        </span>
+        {roll.cost && (
+          <span className="muted" title={`${roll.cost.verified_frames} frames × K ${roll.cost.k}${roll.cost.outing_usd ? " + outing pass" : ""}${roll.cost.model ? ` on ${roll.cost.model}` : ""}`}>
+            Claude so far ≈ ${roll.cost.usd.toFixed(2)}
+          </span>
+        )}
       </div>
     </form>
   );
