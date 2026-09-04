@@ -185,3 +185,18 @@ def test_reverse_order_is_a_worse_fit():
     fwd = solve(build_model(WINDOW, EVENTS, 4, anchors))
     rev = solve(build_model(WINDOW, EVENTS, 4, [Anchor(3 - a.frame, a.uuid, a.time, a.event, a.confidence, a.similarity) for a in anchors]))
     assert fwd.log_score > rev.log_score and rev.anchored < fwd.anchored
+
+
+def test_anchored_interval_is_the_occasion_not_the_instant():
+    # Frame 2 verified against a photo at 10:00 inside the 09:00-11:00 event: the written time
+    # is 10:00 exactly, the interval is the event, and neighbours clip to the event's edges.
+    model = build_model(WINDOW, EVENTS, 3, [anchor(1, 2, 10, 0)])
+    a = solve(model).assignments
+    assert a[1].source == "anchored" and a[1].time == at(2, 10)
+    assert (a[1].t_lo, a[1].t_hi) == (at(2, 9), at(2, 11))
+    assert a[0].t_hi == at(2, 11) and a[2].t_lo == at(2, 9)
+    # A lone photo (single-photo event) still gets an hour around it.
+    lone = [Event(9, at(20, 15), at(20, 15), 41.0, -71.0, 0.0, 1)]
+    m = build_model(WINDOW, EVENTS + lone, 1, [Anchor(0, "u", at(20, 15), 9, 0.9)])
+    x = solve(m).assignments[0]
+    assert (x.t_lo, x.t_hi) == (at(20, 14, 30), at(20, 15, 30)) and x.time == at(20, 15)
