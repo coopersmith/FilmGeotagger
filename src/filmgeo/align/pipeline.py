@@ -31,6 +31,7 @@ from filmgeo.signals.base import Window, collect, effective_window
 from filmgeo.signals.nfc_log import CACHE as NFC_CACHE, NfcLog
 from filmgeo.signals.photos_trail import PhotosTrail
 from filmgeo.signals.user_facts import RollFacts, UserFacts
+from filmgeo.verify.outing import Outings
 
 VERDICTS_DIR = DATA_DIR / "verdicts"
 ASSIGNMENTS_DIR = DATA_DIR / "assignments"
@@ -116,6 +117,7 @@ class RollRun:
     reverse: ReverseTest
     check: WindowCheck
     trail_counts: dict[str, int]
+    outings: Outings | None = None
 
     @property
     def n_frames(self) -> int:
@@ -211,7 +213,9 @@ def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, asset
     verdicts = load_verdicts(key)
     anchors = anchors_from_verdicts(verdicts, pool, event_ids, sims)
     clues = clues_from_verdicts(verdicts, n)
-    inputs = RollInputs(window, events, n, anchors, sims, event_ids, clues, constraints)
+    outings = Outings.load(key)
+    same_outing = outings.same_outing_pairs(n) if outings else set()
+    inputs = RollInputs(window, events, n, anchors, sims, event_ids, clues, constraints, same_outing)
     model = inputs.build()
     solution = solve(model)
     trail, counts = trail_for(assets, window, facts)
@@ -219,7 +223,7 @@ def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, asset
     rev = reverse_test(inputs, solution)
     check = window_check(model, solution, n_verified=len(verdicts) or None)
     return RollRun(key, frames, facts, window, source, pool, events, event_ids, sims, candidates,
-                   verdicts, inputs, solution, rev, check, counts)
+                   verdicts, inputs, solution, rev, check, counts, outings)
 
 
 def to_json(r: RollRun) -> dict:
@@ -233,6 +237,8 @@ def to_json(r: RollRun) -> dict:
         "events": len(r.events),
         "trail": r.trail_counts,
         "verified_frames": len(r.verdicts),
+        "outings": None if r.outings is None else {"groups": r.outings.groups, "out_of_sequence": r.outings.out_of_sequence, "notes": r.outings.notes},
+        "same_outing_pairs": len(r.inputs.same_outing),
         "anchored": r.solution.anchored,
         "log_score": r.solution.log_score,
         "reverse": asdict(r.reverse),
