@@ -672,3 +672,30 @@ the out-of-sequence flag. The right use of the groups is as a *joint* constraint
 frame in a group shares one day — solved by mapping groups onto days rather than nudging
 frame pairs; that is COO-147, and it is where the "a few outings onto days instead of 36
 frames onto weeks" idea in PLAN.md actually lives.
+
+### Grayscale (COO-146 addendum, run 4 September 2026 from Terminal.app)
+
+`scripts/eval_m1.py --rolls 9 --variants siglip_gray` then `sweep_retrieval.py --variant
+siglip_gray`, same 35 frames, same windows. Colour in brackets.
+
+| | grayscale | colour |
+|---|---|---|
+| true photo's rank within its own event, median | **5** | 10 |
+| top-1 within its event / top-6 | 5 / 18 of 35 | 4 / 15 |
+| exact photo, cap 1 @6 / @12 | 11.4% / 14.3% | 5.7% / 8.6% |
+| exact photo, no cap @32 | 40.0% | 37.1% |
+| same occasion, cap 1 @12 / @16 | 77.1% / 80.0% | 74.3% / 77.1% |
+| same occasion, cap 1 @24 / @32 | 80.0% / 82.9% | 88.6% / 88.6% |
+| two-stage yield, event @12 cap 1 then event's top-6 | **45.7%** | 25.7% |
+| calibration, true vs best other event | wins 4 / 35, no separating logistic | 5 / 35, same |
+
+So the gap between a frame and its exact counterpart is partly colour: dropping it halves
+the true photo's rank inside its event and raises the two-stage yield from a quarter to
+nearly half. It does nothing for finding the right *occasion* — occasion recall at K = 12 is
+within a frame of colour, and at K ≥ 24 it is worse — and nothing for calibration. The
+defaults stay colour for the shortlist, because the shortlist's job is the occasion. Where
+grayscale earns its place is a second stage that runs only after verification has named the
+occasion: rank that event's photos in grayscale and offer the top few as "the exact photo,
+if it exists" — filed as COO-148. That is also the cheapest path to exact anchors that this
+ground truth allows: about half of them, for no extra API calls, instead of a fifth for $6.72
+a roll through K alone.
