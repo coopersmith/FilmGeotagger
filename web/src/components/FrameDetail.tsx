@@ -6,6 +6,7 @@ import { CandidateStrip } from "./CandidateStrip";
 import { MapPane } from "./MapPane";
 import { FrameFacts } from "./FrameFacts";
 import { PhotoBrowser } from "./PhotoBrowser";
+import { Question } from "./Question";
 import { TimeEditor } from "./TimeEditor";
 import { Timeline } from "./Timeline";
 import { useState } from "react";
@@ -15,6 +16,7 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
   const assign = useAssign(rollKey);
   const trail = useTrail(rollKey, frame.number, 30);
   const [browsing, setBrowsing] = useState<number | null>(null);
+  const [timeOpen, setTimeOpen] = useState(false);
   const act = (body: Parameters<typeof assign.mutate>[0]["body"]) => assign.mutate({ number: frame.number, body });
   const browsingEvent = browsing === null ? null : (roll.events.find((e) => e.index === browsing) ?? null);
   const v = frame.verdict;
@@ -59,29 +61,24 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
       </div>
 
       <div className="detail__facts">
-        <div className="actions">
-          <button className={`btn ${frame.status === "confirmed" ? "btn--on" : ""}`} disabled={assign.isPending} onClick={() => act({ confirmed: frame.status !== "confirmed" })} title="Enter">
-            {frame.status === "confirmed" ? "✓ confirmed" : "confirm"}
-          </button>
-          <button className="btn btn--ghost" disabled={assign.isPending || !frame.anchor_uuid} onClick={() => frame.anchor_uuid && act({ reject: [frame.anchor_uuid] })} title="n — this photo is not this frame; the solver picks again without it">
-            not a match
-          </button>
-          <button className={`btn btn--ghost ${frame.override?.no_reference ? "btn--on" : ""}`} disabled={assign.isPending} onClick={() => act({ no_reference: !frame.override?.no_reference })} title="N — no phone photo shows this frame; place it between its neighbours">
-            no reference
-          </button>
-          <button className={`btn btn--ghost ${frame.source === "skipped" ? "btn--on" : ""}`} disabled={assign.isPending} onClick={() => act({ skip: frame.source !== "skipped" })} title="x — leave this frame unassigned">
-            unknown
-          </button>
-          {(frame.locked || frame.override || frame.fact) && (
-            <button className="btn btn--ghost" disabled={assign.isPending} onClick={() => act({ unlock: true })} title="u — drop every decision and fact about this frame">
-              unlock
-            </button>
-          )}
-          {assign.isPending && <span className="muted">re-solving…</span>}
-          {assign.error && <span className="error">{(assign.error as Error).message}</span>}
-        </div>
-        <TimeEditor rollKey={rollKey} frame={frame} />
-        <FrameFacts rollKey={rollKey} frame={frame} nFrames={frames.length} />
+        <Question frame={frame} frames={frames} busy={assign.isPending} act={(body) => act(body as Parameters<typeof act>[0])} onOpenTime={() => setTimeOpen(true)} />
+        {assign.isPending && <span className="muted">re-solving…</span>}
+        {assign.error && <span className="error">{(assign.error as Error).message}</span>}
+
+        <details className="fold" open={timeOpen || !!frame.fact?.when} onToggle={(e) => setTimeOpen((e.target as HTMLDetailsElement).open)}>
+          <summary>
+            <span className="eyebrow">Time and offset</span>
+            <span className="muted"> — edit by hand{frame.fact?.when ? ` · fact: ${frame.fact.when}` : ""}</span>
+          </summary>
+          <TimeEditor rollKey={rollKey} frame={frame} />
+        </details>
+        <details className="fold" open={!!(frame.fact && (frame.fact.place_name || frame.fact.same_day_as || frame.fact.note))}>
+          <summary>
+            <span className="eyebrow">Facts about this frame</span>
+            <span className="muted"> — a known day, a place name, same day as another frame</span>
+          </summary>
+          <FrameFacts rollKey={rollKey} frame={frame} nFrames={frames.length} />
+        </details>
 
         <dl className="kv">
           <dt>interval</dt>
@@ -130,7 +127,7 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
           )}
         </dl>
 
-        {v ? (
+        {v && frame.source !== "anchored" && (
           <div className="verdict">
             <div className="verdict__head">
               <span className="eyebrow">Claude</span>
@@ -150,9 +147,18 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
               </ul>
             )}
           </div>
-        ) : (
-          <p className="muted">Not verified yet — run `filmgeo verify {rollKey}` to ask Claude about the shortlist.</p>
         )}
+        {v && frame.source === "anchored" && cluePairs.length > 0 && (
+          <ul className="clues clues--inline">
+            {cluePairs.map(([k, val]) => (
+              <li key={k}>
+                <span className="clues__k">{k.replace(/_/g, " ")}</span>
+                <span>{Array.isArray(val) ? val.join(", ") : String(val)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {!v && <p className="muted">Not verified yet — `filmgeo verify {rollKey}` asks Claude about the shortlist.</p>}
       </div>
 
       <aside className="detail__side">

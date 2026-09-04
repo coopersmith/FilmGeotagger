@@ -262,3 +262,22 @@ def test_frames_sharing_one_photo_keep_all_their_anchors():
     assert a[0].source == a[2].source == "anchored" and a[1].source == "interpolated"
     assert a[1].t_lo <= at(2, 9) <= a[1].t_hi and a[1].event == 0
     assert a[0].time == a[1].time == a[2].time == at(2, 9)     # order wins over spacing
+
+
+def test_same_day_as_an_anchored_frame_binds_to_its_day():
+    # Frame 1 is anchored to day 2 by a verdict, nothing else is known; "frame 3 is the same
+    # day as frame 1" must keep frame 3 (and frame 2, by order) on day 2.
+    from filmgeo.align.model import anchored_days
+
+    anchors = [anchor(0, 2, 10, 0, conf=0.9)]
+    cs = [Constraint("frame", "user", frame=3, same_day_as=1)]
+    derived = anchored_days(anchors, cs)
+    assert len(derived) == 1 and derived[0].frame == 1 and derived[0].t_lo == at(2) and derived[0].t_hi == at(3)
+    model = build_model(WINDOW, EVENTS, 5, anchors, constraints=cs)
+    sol = solve(model)
+    a = sol.assignments
+    assert at(2) <= a[2].time < at(3) and a[2].t_hi <= at(3)
+    assert a[1].t_hi <= at(3)                        # frame 2 sits between them, so the same day
+    assert a[4].t_lo >= at(2)                        # frame 5 is only bound by order
+    # A pair with no anchored side derives nothing.
+    assert anchored_days(anchors, [Constraint("frame", "user", frame=4, same_day_as=5)]) == []

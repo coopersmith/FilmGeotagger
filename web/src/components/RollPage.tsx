@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAssign, useFrames, useRealign, useRoll } from "../api";
 import { fmtDate } from "../format";
-import { BatchBar } from "./BatchBar";
 import { FactsPanel } from "./FactsPanel";
+import { NextStrip } from "./NextStrip";
+import { useWelcomed, Welcome } from "./Welcome";
+import { nextAfter } from "../review";
 import { Filmstrip } from "./Filmstrip";
 import { FrameDetail } from "./FrameDetail";
 import { isTyping, Keys } from "./Keys";
@@ -15,6 +17,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
   const [selected, setSelected] = useState<number | null>(null);
   const [factsOpen, setFactsOpen] = useState(false);
   const [range, setRange] = useState<[number, number] | null>(null);
+  const [welcome, setWelcome] = useWelcomed();
   const list = frames.data ?? [];
   const current = useMemo(() => list.find((f) => f.number === selected) ?? list[0] ?? null, [list, selected]);
   useEffect(() => {
@@ -54,6 +57,11 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
         case "u":
           if (current.locked || current.override || current.fact) act({ unlock: true });
           break;
+        case ".": {
+          const nx = nextAfter(list, current.number);
+          if (nx) setSelected(nx.number);
+          break;
+        }
         default: {
           const d = Number(e.key);
           if (d >= 1 && d <= 9) {
@@ -104,6 +112,9 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
             <button className={`btn btn--ghost ${factsOpen ? "btn--on" : ""}`} onClick={() => setFactsOpen((o) => !o)} title="the window, camera, film, lab, notes; widen and re-run">
               roll facts
             </button>
+            <button className="link" onClick={() => setWelcome(!welcome)}>
+              how it works
+            </button>
             <button className="btn btn--ghost" disabled={realign.isPending} onClick={() => realign.mutate(false)} title="re-read verdicts and facts from disk and solve again">
               {realign.isPending ? "solving…" : "re-solve"}
             </button>
@@ -111,6 +122,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
         )}
       </header>
       {r && factsOpen && <FactsPanel rollKey={rollKey} roll={r} onClose={() => setFactsOpen(false)} />}
+      {r && list.length > 0 && <Welcome roll={r} frames={list} open={welcome} onClose={() => setWelcome(false)} />}
       {loading && <p className="muted pad">Building this roll — library, vectors, solve…</p>}
       {error && <p className="error pad">{String((error as Error).message ?? error)}</p>}
       {list.length > 0 && (
@@ -125,7 +137,9 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
           }}
         />
       )}
-      {list.length > 0 && <BatchBar rollKey={rollKey} frames={list} range={range} onClearRange={() => setRange(null)} />}
+      {r && list.length > 0 && (
+        <NextStrip rollKey={rollKey} roll={r} frames={list} range={range} onClearRange={() => setRange(null)} onGo={setSelected} onOpenFacts={() => setFactsOpen(true)} />
+      )}
       {current && r && <FrameDetail rollKey={rollKey} frame={current} frames={list} roll={r} onSelect={setSelected} />}
       <Keys />
     </div>

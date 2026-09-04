@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 export const KEYS: [string, string][] = [
   ["j / k  or  → / ←", "next / previous frame"],
   ["1 – 9", "use possible photo 1–9's time and GPS"],
+  [".", "next frame that needs you"],
   ["Enter", "confirm this frame (again to unconfirm)"],
   ["n", "not a match: reject the chosen photo"],
   ["N", "no reference: no phone photo shows this frame"],

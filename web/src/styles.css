@@ -124,8 +124,48 @@ a { color: var(--safelight); }
 .sprocket.in-range { box-shadow: inset 0 0 0 2px var(--ok); }
 .sprocket.in-range.is-selected { box-shadow: inset 0 0 0 2px var(--ok), 0 0 0 3px rgba(240, 166, 58, 0.18); }
 
-/* ---- batch bar ---- */
-.batch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 20px; border-bottom: 1px solid var(--line); font-size: 12.5px; background: var(--ink-2); }
+/* ---- next strip: the roll's condition and the one thing to do ---- */
+.next { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(240, 166, 58, 0.08), transparent 60%), var(--ink-2); border-left: 3px solid var(--safelight); }
+.next--done { border-left-color: var(--ok); background: linear-gradient(90deg, rgba(124, 196, 127, 0.1), transparent 60%), var(--ink-2); }
+.next--facts, .next--verify { border-left-color: var(--low); }
+.next__text { display: flex; flex-direction: column; gap: 2px; min-width: 280px; flex: 1 1 420px; }
+.next__headline { font-family: var(--display); font-size: 18px; font-weight: 400; }
+.next__detail { font-size: 12.5px; color: var(--paper-dim); }
+.next__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.next__more summary { list-style: none; cursor: pointer; font-size: 12.5px; }
+.next__more summary::-webkit-details-marker { display: none; }
+.next__more { position: relative; }
+.next__menu { position: absolute; right: 0; top: 24px; z-index: 10; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 14px; background: var(--ink-2); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); min-width: 260px; font-size: 12.5px; }
+.next__menu .link:disabled { opacity: 0.4; cursor: default; }
+
+/* ---- welcome: the five steps ---- */
+.welcome { margin: 16px 20px 0; padding: 14px 18px; border: 1px solid var(--safelight-dim); border-radius: 8px; background: var(--ink-2); }
+.welcome__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 10px; font-size: 12.5px; }
+.welcome__steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.welcome__steps li { display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto auto; column-gap: 8px; }
+.welcome__num { grid-row: 1 / 3; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--safelight); color: var(--safelight); display: flex; align-items: center; justify-content: center; font-size: 11px; }
+.welcome__steps li.is-done .welcome__num { background: var(--ok); border-color: var(--ok); color: var(--ink); }
+.welcome__steps li.is-done .welcome__title { color: var(--paper-dim); }
+.welcome__title { font-family: var(--display); font-size: 16px; }
+.welcome__what { font-size: 12px; line-height: 1.4; }
+
+/* ---- the question ---- */
+.q { padding: 14px 16px; border-radius: 6px; border: 1px solid var(--safelight-dim); background: linear-gradient(180deg, rgba(240, 166, 58, 0.08), transparent); }
+.q--locked { border-color: var(--lock); }
+.q--skipped { border-color: var(--line); }
+.q__text { margin: 0 0 10px; font-family: var(--display); font-size: 17px; line-height: 1.4; }
+.q__text .muted { font-family: var(--body); font-size: 13px; }
+.q__answers { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---- folds ---- */
+.fold { border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; }
+.fold summary { cursor: pointer; padding: 10px 0; font-size: 12.5px; list-style: none; display: flex; align-items: baseline; gap: 4px; }
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary::before { content: "▸"; color: var(--paper-mute); margin-right: 6px; }
+.fold[open] summary::before { content: "▾"; }
+.fold > *:not(summary) { margin-bottom: 12px; }
+.fold .time, .fold .ffacts { border: 0; padding: 0 0 4px; background: transparent; }
+.clues--inline { margin-top: 0; }
 
 /* ---- badges ---- */
 .badges { display: inline-flex; flex-wrap: wrap; gap: 4px; }

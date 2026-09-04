@@ -303,6 +303,13 @@ def test_pin_skip_and_confirm(client):
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"same_day_as": 3}).json())
     assert f[4]["locked"] is False or f[4]["fact"]["same_day_as"] == 3
     assert f[4]["t_hi"] <= datetime(2026, 4, 3, tzinfo=timezone.utc).isoformat() or f[4]["t_hi"].startswith("2026-04-03T00:00")
+    # ...and so does "same day as" a frame that is anchored by a verdict, not by a fact.
+    client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"unlock": True})
+    client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"unlock": True})
+    wide = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())[2]
+    assert wide["t_hi"] > "2026-04-03"
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"same_day_as": 1}).json())
+    assert f[3]["t_lo"] >= "2026-04-01T20:00" and f[3]["t_hi"] <= "2026-04-03T04:01"   # day 2 in the photos' -04:00
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/1/assign", json={"confirmed": True}).json())
     assert f[1]["status"] == "confirmed" and f[1]["source"] == "anchored"
     assert client.get(f"/api/rolls/{KEY}").json()["confirmed"] == 1
