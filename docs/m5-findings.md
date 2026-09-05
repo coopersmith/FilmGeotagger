@@ -162,3 +162,24 @@ otherwise.
 
 To use it: copy the export folder to `.filmgeo/signals/swarm/`; `filmgeo signals <roll>`
 confirms how many check-ins and visits it found.
+
+## COO-133 — Google Maps Timeline
+
+Landed 5 September 2026. `signals/timeline.py`, wired into `trail_for` and `filmgeo signals`;
+102 tests. Not measured — no Timeline export on this Mac; the fixtures follow Google's field
+names for each format.
+
+Three shapes, one adapter: the current on-device `Timeline.json` (`semanticSegments` with
+paths, visits and activities, `rawSignals` position fixes, `frequentPlaces` labels; times
+carry their own offset, so the zone comes free), the legacy Takeout `Records.json`
+(`latitudeE7`/`longitudeE7`, UTC), and the legacy `Semantic Location History` month files
+(`placeVisit` with a **name**, `activitySegment` with waypoints). All yield `timeline` points
+along paths and fixes, subsampled to one a minute and dropped when the fix is coarser than
+200 m, and `visit` points at a stay's start, end and every half hour between, labelled with
+the place name or its type (`Home`, `Work`, `Walking`). UTC-only stamps borrow the photo
+trail's offset by instant. Files that are none of the three shapes are ignored.
+
+Drop the export under `.filmgeo/signals/timeline/`. When one exists, the same location
+coverage measurement as COO-144 (ambiguous → ok, top cluster right, names on clusters) is the
+test; the dense path points should be what turns "ambiguous" into "ok" for frames between
+outings, which the sparse Swarm data could not do.

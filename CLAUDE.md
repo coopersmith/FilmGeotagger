@@ -93,8 +93,10 @@ Mac. COO-144 (Swarm: `signals/swarm.py`, check-ins in UTC with `timeZoneOffset` 
 passive visits with arrival/departure incl. `Home`; export folder under `.filmgeo/signals/swarm/`)
 is done and measured on the user's real export (`~/Downloads/data-export-29125 (1)`): venue
 names label the clusters and the top cluster is right 7/12 instead of 5/12 on the 22-day roll;
-coverage unchanged. Next: COO-133 Google Timeline, COO-134 calendar, COO-135 email receipts,
-COO-136 weather, COO-137 cross-roll, COO-138 incremental cache.
+coverage unchanged. COO-133 (Google Timeline: `signals/timeline.py`, all three export shapes,
+under `.filmgeo/signals/timeline/`) is done but unmeasured — no export on this Mac. Next:
+COO-134 calendar, COO-135 email receipts, COO-136 weather, COO-137 cross-roll, COO-138
+incremental cache.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
@@ -174,7 +176,7 @@ Optional dependency groups: `embed` (torch, open_clip, timm, numpy), `verify` (a
 `.filmgeo/` holds `library.json` (63 MB Photos metadata cache), `vectors/` (26 MB of cached
 embeddings), `facts/` and `overrides/` (the user's input per roll, not derivable),
 `assignments/` (the solved proposal per roll, what M4 writes), `writes/` (write logs and
-argfiles), `signals/{health,swarm}/` (the user's exports, dropped in by hand), `thumbs/` and `nfc_log.txt`
+argfiles), `signals/{health,swarm,timeline}/` (the user's exports, dropped in by hand), `thumbs/` and `nfc_log.txt`
 (the NFC note text; re-reading it through `osascript` takes minutes, see `signals/nfc_log.py`). Do not delete casually: the library cache costs a full `PhotosDB()` parse and the
 vectors cost GPU time. `reports/` holds generated contact sheets.
 
