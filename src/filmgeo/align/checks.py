@@ -44,10 +44,11 @@ class RollInputs:
     constraints: list[Constraint] = field(default_factory=list)
     same_outing: set[tuple[int, int]] = field(default_factory=set)
     params: AlignParams | None = None
+    event_weather: dict[int, str] | None = None
 
     def build(self) -> RollModel:
         return build_model(self.window, self.events, self.n_frames, self.anchors, self.sims, self.event_ids,
-                           self.clues, self.constraints, self.same_outing, self.params)
+                           self.clues, self.constraints, self.same_outing, self.params, self.event_weather)
 
     def reversed(self) -> "RollInputs":
         n = self.n_frames
@@ -63,6 +64,7 @@ class RollInputs:
                          if c.scope == "frame" else c for c in self.constraints],
             same_outing={(flip(b), flip(a)) for a, b in self.same_outing},
             params=self.params,
+            event_weather=self.event_weather,
         )
 
 

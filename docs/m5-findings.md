@@ -183,3 +183,56 @@ Drop the export under `.filmgeo/signals/timeline/`. When one exists, the same lo
 coverage measurement as COO-144 (ambiguous → ok, top cluster right, names on clusters) is the
 test; the dense path points should be what turns "ambiguous" into "ok" for frames between
 outings, which the sparse Swarm data could not do.
+
+## COO-136 — historical weather: measured, and turned off
+
+Landed 5 September 2026 with the term **off**. `signals/weather.py` (Open-Meteo archive, one
+request per 0.1° cell and day, cached under `.filmgeo/weather/`), `FrameClues.weather`,
+`AlignParams.weather_penalty`, `RollInputs.event_weather`; 106 tests. Fetching is opt-in
+(`FILMGEO_WEATHER=1`).
+
+### The idea, and the two numbers that killed it
+
+Claude reads `weather` off the outdoor frames (`clear | overcast | rain | snow | fog`; 27 of 104
+verdicts carry one). The archive knows the sky at every event's place and hour. An event whose
+sky contradicts the clue should be a slightly worse home for the frame — the same nudge
+`time_of_day` already gives.
+
+**First number: is the clue right?** At the hand-tagged time and place of the 25 outdoor frames
+with both a clue and a true pin (`Roll` frames carry the user's GPS):
+
+| | frames |
+|---|---|
+| clue and archive agree | 14 |
+| compatible (archive says `mixed` or `fog`) | 3 |
+| **contradict** | **8** |
+
+The eight are frames 16–19 of `00007037` on both shortlists — the "spring walk: Manhattan
+skyline over the harbour" outing, read as `clear` on film, which the reanalysis has at
+overcast for that hour and cell. Either the harbour had a hole in the cloud or the 10 km grid
+did not; a film frame's sky is a small patch of a coarse field, and one bright outing is
+enough to be wrong a third of the time.
+
+**Second number: does the term help anyway?** Same verdicts, facts and groups as COO-147;
+150 of 162 events had an archive reading:
+
+| roll | penalty | anchored | right day | inside | interpolated median error |
+|---|---|---|---|---|---|
+| `00007037`, K 12 | 0 | 11 | 29 / 37 | 36 / 37 | 1.5 h |
+| | 1.5 or 3 | 11 | **25 / 37** | 35 / 37 | **8.3 h** |
+| `00007037`, K 6 | 0 | 11 | 29 / 37 | 36 / 37 | 1.5 h |
+| | 1.5 or 3 | 11 | **25 / 37** | 36 / 37 | **8.3 h** |
+| `00007044`, K 12 | any | 6 | 9 / 10 | 10 / 10 | 0.2 h (no weather clues on this roll) |
+
+The penalty pushes the four walk frames off their true day toward a clearer one. It cannot
+tell a wrong clue from a wrong event, and here the clue was wrong. So `weather_penalty`
+defaults to 0 and the fetcher to off; both stay for the next measurement, when more rolls
+with outdoor frames exist. The "explanation in the UI" half of the issue — showing the
+archive's sky beside Claude's clue — is not built: with a third of the clues disagreeing it
+would explain the wrong thing as often as the right one.
+
+This is the second emission term in a row (after COO-119's outing bonus) to measure harmful
+and ship off. The pattern is the same: a plausible nudge that pulls frames toward a
+*neighbour's* or a *record's* opinion instead of the day the anchors favour. The constraints
+that have worked — monotone order, facts, joint days — remove impossibilities rather than
+add opinions.

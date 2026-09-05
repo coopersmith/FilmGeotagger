@@ -93,6 +93,14 @@ class AlignParams:
     min_anchor_confidence: float = 0.5
     # A clue (night / midday...) contradicting an event's local hours.
     clue_penalty: float = 1.5
+    # A weather clue (clear / overcast / rain / snow) contradicting the archive's weather at the
+    # event's place and hour (COO-136). Measured OFF: on the verified rolls Claude's clue
+    # disagrees with the 10 km reanalysis on 8 of 25 outdoor frames at the frame's *true* time
+    # and place (a whole "clear" walk the archive calls overcast), and any penalty moves the
+    # 22-day roll's right-day count from 29 to 25 and its interpolated error from 1.5 h to
+    # 8.3 h. The machinery stays for measurement (FILMGEO_WEATHER=1, raise this); the evidence
+    # says a film frame's sky and an hourly grid cell are not the same thing.
+    weather_penalty: float = 0.0
     # Transitions. Time jumps are penalised sublinearly (log1p of hours) so a roll can sit in a
     # camera for weeks while consecutive frames still prefer to stay close: 1 h costs 0.24,
     # a day 1.1, a week 1.8, a month 2.3. For scale, a verdict at 0.9 confidence is worth
@@ -142,6 +150,7 @@ class FrameClues:
 
     time_of_day: str | None = None
     indoor: bool | None = None
+    weather: str | None = None     # clear | overcast | rain | snow | fog, as Claude read it
 
 
 @dataclass
@@ -334,7 +343,10 @@ def build_emissions(
     clues: list[FrameClues | None] | None = None,
     constraints: list[Constraint] | None = None,
     window: Window | None = None,
+    event_weather: dict[int, str] | None = None,     # observed weather class per event (signals/weather.py)
 ) -> tuple[np.ndarray, set[int]]:
+    from filmgeo.signals.weather import contradicts, normalise_clue
+
     S = len(states)
     em = np.full((n_frames, S), NEG)
     kinds = [s.kind for s in states]
@@ -362,6 +374,9 @@ def build_emissions(
                 v = math.log(p)
                 if clues and not _clue_consistent(clues[i], hours.get(s.event)):
                     v -= params.clue_penalty
+                if clues and event_weather and clues[i] is not None and s.event in event_weather \
+                        and contradicts(normalise_clue(clues[i].weather), event_weather[s.event]):
+                    v -= params.weather_penalty
                 em[i, j] = v
 
     # A verdict "candidate c, confidence q" says: with probability q the frame is on c's
@@ -514,12 +529,13 @@ def build_model(
     constraints: list[Constraint] | None = None,
     same_outing: set[tuple[int, int]] | None = None,
     params: AlignParams | None = None,
+    event_weather: dict[int, str] | None = None,
 ) -> RollModel:
     params = params or AlignParams()
     anchors = [a for a in (anchors or []) if a.locked or a.confidence >= params.min_anchor_confidence]
     constraints = list(constraints or []) + anchored_days(anchors, constraints or [])
     states = build_states(window, events, anchors)
-    em, skipped = build_emissions(states, n_frames, params, anchors, events, sims, event_ids, clues, constraints, window)
+    em, skipped = build_emissions(states, n_frames, params, anchors, events, sims, event_ids, clues, constraints, window, event_weather)
     tr = build_transitions(states, params)
     bounds = frame_bounds(constraints or [], n_frames, window)
     return RollModel(n_frames, states, em, tr, params, window, set(same_outing or ()), skipped, bounds)

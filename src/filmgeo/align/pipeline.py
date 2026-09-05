@@ -122,7 +122,7 @@ def clues_from_verdicts(verdicts: dict[int, Verdict], n_frames: int) -> list[Fra
     out: list[FrameClues | None] = [None] * n_frames
     for n, v in verdicts.items():
         if 1 <= n <= n_frames and v.clues:
-            out[n - 1] = FrameClues(time_of_day=v.clues.get("time_of_day"), indoor=v.clues.get("indoor"))
+            out[n - 1] = FrameClues(time_of_day=v.clues.get("time_of_day"), indoor=v.clues.get("indoor"), weather=v.clues.get("weather"))
     return out
 
 
@@ -254,7 +254,8 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     anchors = overrides.apply(anchors, pool, event_ids, sims)
     clues = clues_from_verdicts(verdicts, n)
     same_outing = outings.same_outing_pairs(n) if outings else set()
-    inputs = RollInputs(window, events, n, anchors, sims, event_ids, clues, constraints, same_outing)
+    inputs = RollInputs(window, events, n, anchors, sims, event_ids, clues, constraints, same_outing,
+                        event_weather=event_weather_for(events, clues))
     model = inputs.build()
     solution = solve(model)
     trail = sorted([p for p in trail if p.source != USER_SOURCE] + UserFacts(facts).trail_points(window), key=lambda p: p.time)
@@ -267,6 +268,15 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     return RollRun(key, frames, facts, window, window_source, pool, events, event_ids, sims, candidates,
                    verdicts, inputs, solution, rev, check, _trail_counts(trail), outings,
                    origin=origin, trail=trail, overrides=overrides, possible=possible, exact_variant=exact_variant)
+
+
+def event_weather_for(events: list, clues: list[FrameClues | None]) -> dict[int, str] | None:
+    """Observed weather per event, only when some frame carries a weather clue and fetching is on."""
+    from filmgeo.signals import weather as wx
+
+    if not wx.enabled() or not any(c is not None and c.weather for c in clues):
+        return None
+    return wx.Weather().for_events(events) or None
 
 
 POSSIBLE_K = 8
