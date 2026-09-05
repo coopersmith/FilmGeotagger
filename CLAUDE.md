@@ -86,9 +86,12 @@ interval 50.6 h → 21.8 h; containment and anchors unchanged; oracle unchanged.
 `docs/m5-findings.md`. COO-148 (grayscale second stage) is done: an anchored frame's
 occasion is re-ranked in `siglip_gray` when every vector is cached (never embeds derivatives),
 moving the exact photo from median rank 10 to 7 inside its event and into the top three for
-12 of 35 instead of 7 — modest, free, and bounded by occasion recall. Next: the signal
-adapters (COO-132 Health GPX, COO-133 Google Timeline, COO-134 calendar, COO-135 email
-receipts, COO-144 Foursquare), COO-136 weather, COO-137 cross-roll, COO-138 incremental cache.
+12 of 35 instead of 7 — modest, free, and bounded by occasion recall. COO-132 (Health
+workout routes: `signals/health_routes.py`, GPX under `.filmgeo/signals/health/`, offset
+borrowed by instant via `PhotosTrail.offset_at`) is done but unmeasured — no export on this
+Mac. A Foursquare/Swarm export *is* on this Mac (`~/Downloads/data-export-29125 (1)/checkins*.json`):
+COO-144 is next, then COO-133 Google Timeline, COO-134 calendar, COO-135 email receipts,
+COO-136 weather, COO-137 cross-roll, COO-138 incremental cache.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:

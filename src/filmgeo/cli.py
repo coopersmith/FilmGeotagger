@@ -306,6 +306,14 @@ def signals(
         sigs.append(NfcLog.from_notes(offset_for=trail.offset_for, refresh=refresh_nfc))
     except RuntimeError as e:
         console.print(f"[yellow]nfc_log unavailable:[/] {e}")
+    from filmgeo.signals.health_routes import HEALTH_DIR, HealthRoutes
+
+    if HEALTH_DIR.is_dir():
+        health = HealthRoutes(HEALTH_DIR, offset_at=trail.offset_at)
+        sigs.append(health)
+        console.print(f"health routes: {len(health.files(default))} GPX files in the window under {HEALTH_DIR}")
+    else:
+        console.print(f"[dim]no Health routes: drop an export's workout-routes/ under {HEALTH_DIR} to use them[/]")
     ev = collect(sigs, default)
     window = effective_window(ev.constraints, default)
 
