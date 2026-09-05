@@ -31,6 +31,7 @@ from filmgeo.photos.library import Asset
 from filmgeo.signals.base import TrailPoint, Window, collect, effective_window
 from filmgeo.signals.health_routes import HEALTH_DIR, HealthRoutes
 from filmgeo.signals.nfc_log import CACHE as NFC_CACHE, NfcLog
+from filmgeo.signals import swarm as swarm_mod
 from filmgeo.signals.photos_trail import PhotosTrail
 from filmgeo.signals.user_facts import SOURCE as USER_SOURCE, RollFacts, UserFacts
 from filmgeo.verify.outing import Outings
@@ -204,6 +205,8 @@ def trail_for(assets: list[Asset], window: Window, facts: RollFacts) -> tuple[li
         signals.append(NfcLog.from_notes(offset_for=photos.offset_for))
     if HEALTH_DIR.is_dir():
         signals.append(HealthRoutes(HEALTH_DIR, offset_at=photos.offset_at))
+    if swarm_mod.SWARM_DIR.is_dir():
+        signals.append(swarm_mod.Swarm(swarm_mod.SWARM_DIR, offset_at=photos.offset_at))
     evidence = collect(signals, window)
     return evidence.trail, _trail_counts(evidence.trail)
 

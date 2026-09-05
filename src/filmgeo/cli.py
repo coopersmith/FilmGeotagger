@@ -314,6 +314,14 @@ def signals(
         console.print(f"health routes: {len(health.files(default))} GPX files in the window under {HEALTH_DIR}")
     else:
         console.print(f"[dim]no Health routes: drop an export's workout-routes/ under {HEALTH_DIR} to use them[/]")
+    from filmgeo.signals.swarm import SWARM_DIR, Swarm
+
+    if SWARM_DIR.is_dir():
+        sw = Swarm(SWARM_DIR, offset_at=trail.offset_at)
+        sigs.append(sw)
+        console.print(f"swarm: {len(sw.checkins)} check-ins and {len(sw.visits)} visits in the export under {SWARM_DIR}")
+    else:
+        console.print(f"[dim]no Swarm export: drop the data-export folder under {SWARM_DIR} to use check-ins and visits[/]")
     ev = collect(sigs, default)
     window = effective_window(ev.constraints, default)
 
