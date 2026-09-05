@@ -100,7 +100,12 @@ true time and place on 8 of 25 outdoor frames, and any penalty makes the 22-day 
 (right day 29 → 25, interpolated error 1.5 → 8.3 h); `weather_penalty` defaults to 0 and
 fetching needs `FILMGEO_WEATHER=1`. Second emission term to measure harmful (after the outing
 bonus): nudges toward a record's opinion lose; constraints that remove impossibilities win.
-Next: COO-134 calendar, COO-135 email receipts, COO-137 cross-roll, COO-138 incremental cache.
+COO-138 is done: `filmgeo embed` (incremental by uuid: everything newer than the newest
+cached photo, or `--from/--to`, `--variant siglip_gray`, `--dry-run`) replaces
+`scripts/embed_window.py`; frames between anchors in different zones are `offset_disputed`
+with both `offsets` offered in the time editor. Left in M5: COO-134 calendar and COO-135
+email receipts (both need geocoding and the user's data; low measured value expected given
+COO-119/136), COO-137 cross-roll (needs a multi-roll batch).
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
@@ -162,7 +167,7 @@ uv run filmgeo restore <folder>                              # the scans back fr
 uv run filmgeo clear <folder> [--all]                        # remove filmgeo: keywords (and with --all everything written)
 uv run --extra api --extra embed filmgeo serve [roll...]   # review API + UI on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
 (cd web && npm install && npm run build)                  # the UI -> web/dist, which serve mounts at /; `npm run dev` proxies /api to 8765
-uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)
+uv run --extra embed filmgeo embed [--from 2026-05-01 --to 2026-05-27] [--variant siglip_gray] [--dry-run]   # Terminal.app only; default: what is new
 uv run --extra dev --extra api pytest   # unit + API tests
 
 uv run --extra embed python scripts/eval_m1.py --rolls 9

@@ -236,3 +236,28 @@ and ship off. The pattern is the same: a plausible nudge that pulls frames towar
 *neighbour's* or a *record's* opinion instead of the day the anchors favour. The constraints
 that have worked — monotone order, facts, joint days — remove impossibilities rather than
 add opinions.
+
+## COO-138 — the incremental embedding cache, and a roll that crosses a zone
+
+Landed 5 September 2026. `filmgeo embed`, offsets in dispute across a zone change in
+`geo.place`, `offsets` in the API and a note in the time editor; 107 tests.
+
+### `filmgeo embed`
+
+The vector cache was always keyed by asset uuid and never embedded twice; what was missing was
+a command that knows what a new batch needs. `filmgeo embed` with no options embeds every
+candidate photo newer than the newest one already cached (minus a day), `--from/--to` names a
+window, `--variant siglip_gray` builds the grayscale cache the second stage (COO-148) wants,
+`--dry-run` only counts. It refuses cleanly outside Terminal.app, where Photos derivatives are
+unreadable. On this Mac today: 5,078 colour vectors cached, 7,014 candidate photos since 25 May
+not yet embedded; 530 of April's 2,397 missing from the grayscale cache. `scripts/embed_window.py`
+is superseded.
+
+### A roll across a zone change
+
+A frame between two anchored frames whose offsets differ — New York then Lisbon — is now
+`offset_disputed` even when the trail inside its interval is thin, and carries both offsets
+(`offsets`). The nearest trail point still decides what is written, as before; the time
+editor opens itself on such a frame and says "the roll crosses a zone change here: UTC-04:00 or
+UTC+01:00; the nearest trail point says −04:00, pick the other if you know better". Not
+measured: no roll in the ground truth crosses a zone.

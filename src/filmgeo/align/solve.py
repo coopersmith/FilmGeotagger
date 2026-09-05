@@ -50,7 +50,8 @@ class Assignment:
     location: str = "none"                  # ok | ambiguous | none
     location_source: str | None = None      # anchor | trail | interpolated
     clusters: list = field(default_factory=list)   # geo.Cluster, for the UI when ambiguous
-    offset_disputed: bool = False           # trail points in the interval disagree on offset
+    offset_disputed: bool = False           # trail points in the interval, or the neighbouring anchors, disagree on offset
+    offsets: list[int] = field(default_factory=list)   # the distinct offsets in play when disputed, for the UI to offer
 
 
 @dataclass
