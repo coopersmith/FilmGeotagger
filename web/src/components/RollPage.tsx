@@ -4,6 +4,7 @@ import { fmtDate } from "../format";
 import { FactsPanel } from "./FactsPanel";
 import { NextStrip } from "./NextStrip";
 import { useWelcomed, Welcome } from "./Welcome";
+import { WritePanel } from "./WritePanel";
 import { nextAfter } from "../review";
 import { Filmstrip } from "./Filmstrip";
 import { FrameDetail } from "./FrameDetail";
@@ -18,6 +19,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
   const [factsOpen, setFactsOpen] = useState(false);
   const [range, setRange] = useState<[number, number] | null>(null);
   const [welcome, setWelcome] = useWelcomed();
+  const [writeOpen, setWriteOpen] = useState(false);
   const list = frames.data ?? [];
   const current = useMemo(() => list.find((f) => f.number === selected) ?? list[0] ?? null, [list, selected]);
   useEffect(() => {
@@ -115,6 +117,9 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
             <button className={`btn btn--ghost ${factsOpen ? "btn--on" : ""}`} onClick={() => setFactsOpen((o) => !o)} title="the window, camera, film, lab, notes; widen and re-run">
               roll facts
             </button>
+            <button className={`btn btn--ghost ${writeOpen ? "btn--on" : ""}`} onClick={() => setWriteOpen((o) => !o)} title="what would be written into the scan files, and the button that does it">
+              write
+            </button>
             <button className="link" onClick={() => setWelcome(!welcome)}>
               how it works
             </button>
@@ -125,6 +130,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
         )}
       </header>
       {r && factsOpen && <FactsPanel rollKey={rollKey} roll={r} onClose={() => setFactsOpen(false)} />}
+      {r && writeOpen && <WritePanel rollKey={rollKey} roll={r} frames={list} onClose={() => setWriteOpen(false)} />}
       {r && list.length > 0 && <Welcome roll={r} frames={list} open={welcome} onClose={() => setWelcome(false)} />}
       {loading && <p className="muted pad">Building this roll — library, vectors, solve…</p>}
       {stale && <p className="error pad">This page is newer than the running server: stop `filmgeo serve` (Ctrl-C), start it again, then reload.</p>}
@@ -142,7 +148,7 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
         />
       )}
       {r && list.length > 0 && (
-        <NextStrip rollKey={rollKey} roll={r} frames={list} range={range} onClearRange={() => setRange(null)} onGo={setSelected} onOpenFacts={() => setFactsOpen(true)} />
+        <NextStrip rollKey={rollKey} roll={r} frames={list} range={range} onClearRange={() => setRange(null)} onGo={setSelected} onOpenFacts={() => setFactsOpen(true)} onOpenWrite={() => setWriteOpen(true)} />
       )}
       {current && r && <FrameDetail rollKey={rollKey} frame={current} frames={list} roll={r} onSelect={setSelected} />}
       <Keys />

@@ -10,10 +10,11 @@ interface Props {
   onClearRange: () => void;
   onGo: (n: number) => void;
   onOpenFacts: () => void;
+  onOpenWrite: () => void;
 }
 
 /** The roll's condition in one sentence, the one thing to do next, and the bulk confirms. */
-export function NextStrip({ rollKey, roll, frames, range, onClearRange, onGo, onOpenFacts }: Props) {
+export function NextStrip({ rollKey, roll, frames, range, onClearRange, onGo, onOpenFacts, onOpenWrite }: Props) {
   const confirm = useConfirm(rollKey);
   const p = plan(roll, frames);
   const busy = confirm.isPending;
@@ -33,6 +34,11 @@ export function NextStrip({ rollKey, roll, frames, range, onClearRange, onGo, on
         {p.action === "facts" && (
           <button className="btn" onClick={onOpenFacts}>
             roll facts
+          </button>
+        )}
+        {p.action === "write" && (
+          <button className="btn" onClick={onOpenWrite}>
+            write the files
           </button>
         )}
         {p.next && (

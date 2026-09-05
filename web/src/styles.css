@@ -312,3 +312,23 @@ a { color: var(--safelight); }
 /* ---- crash ---- */
 .crash { max-width: 720px; margin: 80px auto; padding: 0 24px; display: flex; flex-direction: column; gap: 12px; }
 .crash pre { white-space: pre-wrap; padding: 12px; background: var(--ink-2); border: 1px solid var(--low); border-radius: 6px; color: var(--low); }
+
+/* ---- write panel ---- */
+.writep { margin: 0 20px; padding: 14px 18px 12px; border: 1px solid var(--safelight-dim); border-radius: 8px; background: var(--ink-2); display: flex; flex-direction: column; gap: 12px; }
+.writep__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; font-size: 12.5px; }
+.wtable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.wtable th { text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--paper-mute); padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.wtable td { padding: 5px 8px; border-bottom: 1px solid #201c17; vertical-align: middle; }
+.wtable img { width: 44px; height: 34px; object-fit: cover; border-radius: 2px; display: block; }
+.wtable tr.is-skip td { color: var(--paper-mute); }
+.wtable .ok { color: var(--ok); }
+.writep__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; font-size: 12.5px; }
+.writep__toggle { display: flex; align-items: center; gap: 8px; }
+.btn--write { font-size: 14px; padding: 8px 16px; background: rgba(240, 166, 58, 0.22); border-color: var(--safelight); }
+.report { padding: 12px 14px; border-radius: 6px; border: 1px solid var(--ok); background: rgba(124, 196, 127, 0.06); }
+.report--bad { border-color: var(--low); background: rgba(209, 101, 90, 0.06); }
+.report__head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 6px; font-size: 13px; }
+.report__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+.report__list .ok { color: var(--ok); }
+.writep__restore { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; padding-top: 6px; border-top: 1px solid var(--line); }
+.next--write { border-left-color: var(--ok); }
