@@ -94,9 +94,13 @@ passive visits with arrival/departure incl. `Home`; export folder under `.filmge
 is done and measured on the user's real export (`~/Downloads/data-export-29125 (1)`): venue
 names label the clusters and the top cluster is right 7/12 instead of 5/12 on the 22-day roll;
 coverage unchanged. COO-133 (Google Timeline: `signals/timeline.py`, all three export shapes,
-under `.filmgeo/signals/timeline/`) is done but unmeasured — no export on this Mac. Next:
-COO-134 calendar, COO-135 email receipts, COO-136 weather, COO-137 cross-roll, COO-138
-incremental cache.
+under `.filmgeo/signals/timeline/`) is done but unmeasured — no export on this Mac. COO-136
+(weather) is done and **off**: Claude's weather clue contradicts the Open-Meteo archive at the
+true time and place on 8 of 25 outdoor frames, and any penalty makes the 22-day roll worse
+(right day 29 → 25, interpolated error 1.5 → 8.3 h); `weather_penalty` defaults to 0 and
+fetching needs `FILMGEO_WEATHER=1`. Second emission term to measure harmful (after the outing
+bonus): nudges toward a record's opinion lose; constraints that remove impossibilities win.
+Next: COO-134 calendar, COO-135 email receipts, COO-137 cross-roll, COO-138 incremental cache.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
