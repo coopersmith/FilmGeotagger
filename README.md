@@ -15,8 +15,10 @@ are complete. Findings: [docs/m0-findings.md](docs/m0-findings.md),
 [docs/m1-findings.md](docs/m1-findings.md), [docs/m2-findings.md](docs/m2-findings.md),
 [docs/m3-findings.md](docs/m3-findings.md). The review UI walks each roll through five steps:
 tell it when, let Claude look, confirm the greens, resolve the rest, write. M4 (the write step) is in
-progress: `filmgeo write <roll>` shows what the confirmed frames would get, `--write` writes it
-([docs/m4-findings.md](docs/m4-findings.md)).
+progress: the review UI's write panel (and `filmgeo write <roll> --write`) puts dates, offsets,
+GPS and keywords into the scan files with a backup, a read-back check, a sidecar and one-click
+restore ([docs/m4-findings.md](docs/m4-findings.md)). What remains is running a fresh roll
+end to end into Photos and Lightroom.
 
 ```bash
 filmgeo index                 # read the Photos library into the local cache (slow when cold)

@@ -431,3 +431,74 @@ def test_overrides_apply_and_roundtrip(tmp_path, world):
     assert back.frames[3].anchor == "P06" and back.frames[2].confirmed and back.get(4) is None
     o.frame(3).anchor = "not-in-pool"
     assert o.apply(anchors, pool, ids) == []
+
+
+# -- writing ----------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def writable(tmp_path, world):
+    """The same synthetic roll, aligned from a real scratch folder holding the frame files in scan order."""
+    import shutil
+
+    scans = tmp_path / "scans"
+    scans.mkdir()
+    for f in world["frames"]:
+        shutil.copy(f.path, scans / f"000070440{f.number:03d}.jpg")
+    loader = FakeLoader(world)
+    s = Store(data_dir=tmp_path / "data", loader=loader, assets_loader=lambda: list(world["pool"]), origins={KEY: str(scans)})
+    return TestClient(create_app(s)), s, scans
+
+
+def test_write_is_refused_for_a_roll_inside_photos(client):
+    client.get(f"/api/rolls/{KEY}")
+    r = client.get(f"/api/rolls/{KEY}/write")
+    assert r.status_code == 409 and "Photos library" in r.json()["detail"]
+    assert client.get(f"/api/rolls/{KEY}").json()["writable"] is False
+
+
+@pytest.mark.skipif(__import__("shutil").which("exiftool") is None, reason="exiftool not installed")
+def test_write_plan_write_verify_and_restore(writable):
+    from datetime import datetime as dt
+
+    c, store, scans = writable
+    roll = c.get(f"/api/rolls/{KEY}").json()
+    assert roll["writable"] is True and roll["written"] is None
+    plan = c.get(f"/api/rolls/{KEY}/write").json()
+    assert plan["frames"] == [] and [s["why"] for s in plan["skipped"]] == ["not confirmed"] * 5
+    c.post(f"/api/rolls/{KEY}/confirm", json={"min_confidence": 0.8})
+    plan = c.get(f"/api/rolls/{KEY}/write").json()
+    assert [f["number"] for f in plan["frames"]] == [1, 5] and plan["frames"][0]["current"] is None
+    assert plan["frames"][0]["local"] == "2026:04:02 05:20:00" and plan["frames"][0]["offset"] == "-04:00"
+    assert plan["frames"][0]["provenance"] == ["filmgeo:anchored", "filmgeo:conf:high"]
+
+    res = c.post(f"/api/rolls/{KEY}/write").json()
+    assert res["ok"] and [ (k["number"], k["ok"]) for k in res["checks"]] == [(1, True), (5, True)] and res["backed_up"] == 2
+    assert (scans / "filmgeo.json").exists() and (scans / ".filmgeo_backup" / "000070440001.jpg").exists()
+    f = frames_by_number(res["frames"])
+    assert f[1]["written"]["local"] == "2026:04:02 05:20:00" and f[1]["written"]["changed"] is False and f[2]["written"] is None
+    roll = c.get(f"/api/rolls/{KEY}").json()
+    assert roll["written"]["frames"] == 2
+    # Nothing to write now; the plan says so.
+    plan = c.get(f"/api/rolls/{KEY}/write").json()
+    assert plan["frames"] == [] and {s["why"] for s in plan["skipped"]} == {"unchanged", "not confirmed"}
+    # Move frame 1 to another photo: it is "changed since written", and the next plan writes only it.
+    f = frames_by_number(c.put(f"/api/rolls/{KEY}/frames/1/assign", json={"anchor": "P02", "confirmed": True}).json())
+    assert f[1]["written"]["changed"] is True and f[5]["written"]["changed"] is False
+    plan = c.get(f"/api/rolls/{KEY}/write").json()
+    assert [x["number"] for x in plan["frames"]] == [1] and plan["frames"][0]["current"] == "2026:04:02 05:20:00"
+    assert len(c.get(f"/api/rolls/{KEY}/write?force=true").json()["frames"]) == 2
+    res = c.post(f"/api/rolls/{KEY}/write").json()
+    assert res["ok"] and [k["number"] for k in res["checks"]] == [1]
+    assert frames_by_number(res["frames"])[1]["written"]["local"] == "2026:04:02 05:40:00"
+    # Restore puts every scan back; the sidecar stays as a record.
+    before = (scans / ".filmgeo_backup" / "000070440001.jpg").read_bytes()
+    r = c.post(f"/api/rolls/{KEY}/restore").json()
+    assert {x["how"] for x in r["restored"]} == {"backup", "nothing to restore"}
+    assert (scans / "000070440001.jpg").read_bytes() == before
+    from filmgeo.write.exiftool import current_tags
+    assert current_tags({1: scans / "000070440001.jpg"})[1].date is None
+    # The sidecar forgets what was restored: no "written" badge lies about the file.
+    assert all(f["written"] is None for f in r["frames"])
+    plan = c.get(f"/api/rolls/{KEY}/write").json()
+    assert [x["number"] for x in plan["frames"]] == [1, 5]

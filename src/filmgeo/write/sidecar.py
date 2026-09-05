@@ -122,3 +122,18 @@ def adopt(key: str, folder: Path, facts_dir: Path, overrides_dir: Path) -> list[
         ro.save(overrides_dir)
         made.append("overrides")
     return made
+
+
+def forget(folder: Path, names: list[str]) -> int:
+    """Drop the per-frame records for files that were restored: the file no longer holds them.
+
+    Facts and overrides stay — they are decisions, not state of the file. Returns how many
+    records were dropped.
+    """
+    s = load(folder)
+    if not s:
+        return 0
+    before = len(s.get("frames", []))
+    s["frames"] = [f for f in s.get("frames", []) if f.get("file") not in set(names)]
+    path_for(folder).write_text(json.dumps(s, indent=1) + "\n")
+    return before - len(s["frames"])

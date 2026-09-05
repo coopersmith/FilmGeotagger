@@ -11,6 +11,8 @@ export function Badges({ frame, compact = false }: { frame: Frame; compact?: boo
   if (frame.location === "none") items.push({ key: "noloc", label: "no place", glyph: "·", cls: "badge--dim", title: "nothing in the trail places it" });
   if (frame.offset_disputed) items.push({ key: "off", label: "offset disputed", glyph: "±", cls: "badge--warn", title: "trail points disagree on the UTC offset" });
   if (frame.status === "confirmed") items.push({ key: "ok", label: "confirmed", glyph: "✓", cls: "badge--ok", title: "confirmed for writing" });
+  if (frame.written && !frame.written.changed) items.push({ key: "written", label: "written", glyph: "◆", cls: "badge--ok", title: `in the file: ${frame.written.local} ${frame.written.offset}` });
+  if (frame.written && frame.written.changed) items.push({ key: "changed", label: "changed since written", glyph: "◇", cls: "badge--warn", title: `the file says ${frame.written.local} ${frame.written.offset}; this differs` });
   return (
     <span className={`badges ${compact ? "badges--compact" : ""}`}>
       {items.map((b) => (

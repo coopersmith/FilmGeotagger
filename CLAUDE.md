@@ -73,7 +73,10 @@ source, confidence, interval, anchor, Claude's evidence, timestamp, verified; pl
 overrides), `plan()` skips frames the sidecar says are written as they stand (`--force`
 otherwise), and the store adopts a sidecar's facts/overrides when a roll's caches are gone.
 The API carries `written` per frame (with `changed`) and `writable`/`written` per roll.
-Next: COO-130 (write UI), COO-131 (end to end into Photos and Lightroom).
+COO-130 is done: `GET/POST …/write` and `POST …/restore` in the API, a write panel in the
+UI (plan table, unconfirmed and force toggles, one button, read-back report, restore), ◆/◇
+written badges, and the guide's fifth step. Next: COO-131 — a fresh roll end to end from a
+real scan folder into Photos and Lightroom, which only the user can run.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:

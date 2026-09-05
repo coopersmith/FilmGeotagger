@@ -14,6 +14,7 @@ scratch directory with a fake loader and never touch the real caches.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import threading
 from datetime import timedelta
@@ -201,6 +202,47 @@ class Store:
         from filmgeo.write import sidecar
 
         return sidecar.written_frames(folder)
+
+    # -- writing -----------------------------------------------------------------------------
+
+    def folder_for(self, key: str) -> Path | None:
+        try:
+            folder = Path(self.origin_for(key)).expanduser()
+        except KeyError:
+            return None
+        return folder if folder.is_dir() else None
+
+    def write_plan(self, key: str, force: bool = False):
+        """The write plan for a roll's current assignments, against the files as they are now."""
+        from filmgeo.write import exiftool as w, sidecar
+
+        run = self.get(key)
+        folder = self.folder_for(key)
+        if folder is None:
+            raise w.WriteError(f"{key} was aligned from {run.origin!r}, which is not a scan folder — its frames live in the Photos library.")
+        files = w.scan_files(folder)
+        return w.plan(key, folder, pipeline.to_json(run), run.facts, files=files, current=w.current_tags(files),
+                      written=sidecar.written_frames(folder), force=force)
+
+    def write(self, key: str, force: bool = False):
+        """Backup, write, verify, record, sidecar — the same chain as `filmgeo write --write`."""
+        from filmgeo.write import ops
+
+        with self.lock:
+            run = self.get(key)
+            p = self.write_plan(key, force)
+            verdicts = {n: dataclasses.asdict(v) for n, v in run.verdicts.items()}
+            return p, ops.write_roll(p, self.data_dir / "writes", assignments=pipeline.to_json(run), verdicts=verdicts,
+                                     facts=run.facts, overrides=run.overrides)
+
+    def restore(self, key: str):
+        from filmgeo.write import exiftool as w, ops
+
+        folder = self.folder_for(key)
+        if folder is None:
+            raise w.WriteError(f"{key} has no scan folder to restore")
+        with self.lock:
+            return ops.restore(folder)
 
     def edit(self, key: str) -> tuple[RollFacts, RollOverrides]:
         """Deep copies to edit; hand them back to `update`, which discards them if the solve fails."""

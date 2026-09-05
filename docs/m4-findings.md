@@ -113,3 +113,34 @@ Two things read it:
 The API now says per frame what is in the file and whether the current assignment differs
 (`written.changed`), and per roll whether it is writable (a scan folder, not the Photos
 library) and when it was last written. That is what COO-130's write page needs.
+
+## COO-130 — the write page
+
+Landed 5 September 2026. `GET/POST /api/rolls/{key}/write`, `POST …/restore`,
+`web/src/components/WritePanel.tsx`, written badges, the write step in the guide; 90 tests.
+
+### What it is
+
+"write" in the roll header, and the next strip's own button once every frame is confirmed,
+open a panel over the roll: the plan as a table — frame, file, what the file says now, the new
+local time and offset, GPS or "none", the provenance keywords — with the frames that will be
+left alone and why (not confirmed, skipped, unchanged since the last write). One button,
+"Write N files". Unconfirmed frames block it until a checkbox says to write the confirmed ones
+now and leave the rest; frames already written as they stand are skipped unless a second
+checkbox forces them. The write runs COO-128's chain and the panel shows the read-back report
+per file, warnings if exiftool had any, the backup count and the sidecar. "Restore originals…"
+asks once and puts every scan back from the backup folder.
+
+Each frame in the filmstrip carries ◆ *written* when the file holds its current assignment and
+◇ *changed since written* when it does not, so a roll re-opened after edits shows at a glance
+what a write would touch. The five-step guide ticks "Write" when every confirmed frame is in
+its file; the next strip says "All frames confirmed and written. Import the folder into
+Photos, or open it in Lightroom."
+
+A roll aligned from the Photos library (a hand-tagged key) is not writable, and the panel
+says so instead of offering a button.
+
+Verified in the browser on the synthetic roll with a scratch scan folder: plan of five, write,
+5 of 5 verified with backups and sidecar, badges flip to written, the next plan is all
+"unchanged", a one-frame change flips its badge and yields a one-frame plan, restore puts the
+files back and clears the written state.

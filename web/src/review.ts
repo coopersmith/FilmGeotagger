@@ -17,7 +17,7 @@ export interface Plan {
   next: Frame | null;           // the frame to look at
   headline: string;
   detail: string;
-  action: "verify" | "facts" | "confirm-greens" | "review" | "inside" | "done";
+  action: "verify" | "facts" | "confirm-greens" | "review" | "inside" | "write" | "done";
 }
 
 export function plan(roll: Roll, frames: Frame[]): Plan {
@@ -31,7 +31,14 @@ export function plan(roll: Roll, frames: Frame[]): Plan {
   const base = { n, anchored, confirmed, unresolved, greensToConfirm: greens, next: greens[0] ?? reds[0] ?? null };
 
   if (unresolved.length === 0) {
-    return { ...base, action: "done", headline: `All ${n} frames confirmed.`, detail: "Writing them into the scan files is the next milestone; nothing has been written yet." };
+    const pending = frames.filter((f) => f.source !== "skipped" && (!f.written || f.written.changed));
+    if (!roll.writable) {
+      return { ...base, action: "done", headline: `All ${n} frames confirmed.`, detail: "This roll was aligned from the Photos library, so there are no scan files to write. Open it from its scan folder to write." };
+    }
+    if (pending.length === 0) {
+      return { ...base, action: "done", headline: `All ${n} frames confirmed and written.`, detail: `Last written ${roll.written?.at?.slice(0, 16).replace("T", " ") ?? ""}. Import the folder into Photos, or open it in Lightroom.` };
+    }
+    return { ...base, action: "write", headline: `All ${n} frames confirmed. ${pending.length} to write.`, detail: roll.written ? `${pending.length} changed since the last write. Write them into the scan files.` : "Write the dates, offsets, GPS and keywords into the scan files." };
   }
   if (roll.verified_frames === 0 && anchored === 0) {
     return {
@@ -73,7 +80,7 @@ export const STEPS: { key: string; title: string; what: string }[] = [
   { key: "verify", title: "Let Claude look", what: "`filmgeo verify <roll>` shows each frame its most similar phone photos and asks which is the same occasion." },
   { key: "greens", title: "Confirm the greens", what: "Frames with a green bar are matched and consistent with their neighbours. Check the photo, press Enter." },
   { key: "reds", title: "Resolve the rest", what: "Pick a possible photo, say it is the same day as a neighbour, type a time, or mark it no reference. Every choice re-solves the roll." },
-  { key: "write", title: "Write", what: "Once every frame is confirmed, the dates, offsets and GPS go into the scan files (next milestone)." },
+  { key: "write", title: "Write", what: "Once every frame is confirmed, the dates, offsets, GPS and keywords go into the scan files; originals are kept, and restore is one click." },
 ];
 
 export function stepsDone(roll: Roll, frames: Frame[]): Record<string, boolean> {
@@ -83,6 +90,6 @@ export function stepsDone(roll: Roll, frames: Frame[]): Record<string, boolean> 
     verify: roll.verified_frames > 0,
     greens: frames.filter(isGreen).every((f) => f.status === "confirmed"),
     reds: p.unresolved.length === 0,
-    write: false,
+    write: p.unresolved.length === 0 && frames.filter((f) => f.source !== "skipped").every((f) => f.written && !f.written.changed),
   };
 }

@@ -90,6 +90,25 @@ export interface Frame {
   override: Override | null;
   fact: FrameFact | null;
   outing: number | null;
+  written: { at: string | null; local: string | null; offset: string | null; lat: number | null; lon: number | null; verified: boolean | null; changed: boolean } | null;
+}
+
+export interface WritePlan {
+  roll: string;
+  folder: string;
+  frames: { number: number; file: string; current: string | null; local: string; offset: string; lat: number | null; lon: number | null; source: string; confidence: number; keywords: string[]; provenance: string[]; stale: string[] }[];
+  skipped: { number: number; file: string | null; why: string }[];
+}
+
+export interface WriteResult {
+  plan: WritePlan;
+  ok: boolean;
+  warnings: string[];
+  checks: { number: number; file: string; ok: boolean; problems: string[] }[];
+  backed_up: number;
+  record: string;
+  sidecar: string | null;
+  frames: Frame[];
 }
 
 export interface TrailPoint {
@@ -142,6 +161,8 @@ export interface Roll {
   facts: Facts;
   confirmed: number;
   cost: { verified_frames: number; k: number; verify_usd: number; outing_usd: number; usd: number; model: string | null };
+  writable: boolean;
+  written: { at: string | null; frames: number } | null;
 }
 
 export type FactsBody = Omit<Facts, "roll" | "frames"> & { frames: Record<string, Partial<FrameFact>> };
@@ -244,6 +265,40 @@ export function useAssign(key: string) {
       qc.invalidateQueries({ queryKey: ["roll", key] });
       qc.invalidateQueries({ queryKey: ["rolls"] });
       qc.invalidateQueries({ queryKey: ["trail", key] });
+    },
+  });
+}
+
+export const useWritePlan = (key: string, force: boolean, enabled: boolean) =>
+  useQuery({
+    queryKey: ["write-plan", key, force],
+    queryFn: () => request<WritePlan>(`/api/rolls/${encodeURIComponent(key)}/write?force=${force}`),
+    enabled,
+    staleTime: 0,
+  });
+
+/** Backup, write, read back, record, sidecar — the same chain as `filmgeo write --write`. */
+export function useWrite(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (force: boolean) => request<WriteResult>(`/api/rolls/${encodeURIComponent(key)}/write?force=${force}`, { method: "POST" }),
+    onSuccess: ({ frames }) => {
+      qc.setQueryData(["frames", key], frames.map(normaliseFrame));
+      qc.invalidateQueries({ queryKey: ["roll", key] });
+      qc.invalidateQueries({ queryKey: ["write-plan", key] });
+      qc.invalidateQueries({ queryKey: ["rolls"] });
+    },
+  });
+}
+
+export function useRestore(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<{ restored: { file: string; how: string }[]; frames: Frame[] }>(`/api/rolls/${encodeURIComponent(key)}/restore`, { method: "POST" }),
+    onSuccess: ({ frames }) => {
+      qc.setQueryData(["frames", key], frames.map(normaliseFrame));
+      qc.invalidateQueries({ queryKey: ["roll", key] });
+      qc.invalidateQueries({ queryKey: ["write-plan", key] });
     },
   });
 }

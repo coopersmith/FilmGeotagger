@@ -14,6 +14,9 @@ reachable off the machine. Routes live under `/api` so the web build can own `/`
     GET  /api/rolls/{key}/facts
     PUT  /api/rolls/{key}/facts                     the whole facts file; re-solves (rebuilds the pool if the window moved)
     POST /api/rolls/{key}/realign                   {"widen": bool}: from disk again, optionally a month wider each side
+    GET  /api/rolls/{key}/write?force=              the write plan: confirmed frames and their new values, the rest and why
+    POST /api/rolls/{key}/write?force=              backup, write, read back, record, sidecar; the verification report
+    POST /api/rolls/{key}/restore                   every scan back from .filmgeo_backup/ (or _original)
     GET  /api/rolls/{key}/frames/{n}/image?size=    small | large
     GET  /api/photos/{uuid}/image?size=
 
@@ -376,6 +379,56 @@ def create_app(store: Store | None = None) -> FastAPI:
         body = body or RealignBody()
         new = solved(lambda: store.widen(key) if body.widen else store.reload(key))
         return roll_json(new) | {"frames": frames_json(new, store.written(key))}
+
+    def plan_json(p) -> dict:
+        return {
+            "roll": p.roll,
+            "folder": str(p.folder),
+            "frames": [
+                {"number": f.number, "file": f.path.name, "current": f.current, "local": f.local, "offset": f.offset,
+                 "lat": f.lat, "lon": f.lon, "source": f.source, "confidence": f.confidence, "keywords": f.keywords,
+                 "provenance": [k for k in f.keywords if k.startswith("filmgeo:")], "stale": f.stale}
+                for f in p.frames
+            ],
+            "skipped": [{"number": s.number, "file": s.path.name if s.path else None, "why": s.why} for s in p.skipped],
+        }
+
+    def writing(fn):
+        from filmgeo.write.exiftool import WriteError
+
+        try:
+            return fn()
+        except WriteError as e:
+            raise HTTPException(409, str(e))
+
+    @app.get("/api/rolls/{key}/write")
+    def get_write_plan(key: str, force: bool = Query(False)) -> dict:
+        """What `POST` would write: the confirmed frames with their new values, and why the rest are left alone."""
+        run_for(key)
+        return writing(lambda: plan_json(store.write_plan(key, force)))
+
+    @app.post("/api/rolls/{key}/write")
+    def do_write(key: str, body: RealignBody | None = None, force: bool = Query(False)) -> dict:
+        """Backup, write, read back, record, sidecar. Returns the verification report and the refreshed frames."""
+        run_for(key)
+        p, res = writing(lambda: store.write(key, force))
+        return {
+            "plan": plan_json(p),
+            "ok": res.ok,
+            "warnings": res.warnings,
+            "checks": [{"number": c.number, "file": c.file, "ok": c.ok, "problems": c.problems} for c in res.checks],
+            "backed_up": len(res.backed_up),
+            "record": str(res.record),
+            "sidecar": str(res.sidecar) if res.sidecar else None,
+            "frames": frames_json(store.get(key), store.written(key)),
+        }
+
+    @app.post("/api/rolls/{key}/restore")
+    def do_restore(key: str) -> dict:
+        """Every scan back as it was before filmgeo: the backup folder first, exiftool's _original second."""
+        run_for(key)
+        done = writing(lambda: store.restore(key))
+        return {"restored": [{"file": r.file, "how": r.how} for r in done], "frames": frames_json(store.get(key), store.written(key))}
 
     @app.get("/api/rolls/{key}/frames/{n}/image")
     def frame_image(key: str, n: int, size: str = Query("small", pattern="^(small|large)$")):

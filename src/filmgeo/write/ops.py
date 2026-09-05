@@ -216,6 +216,9 @@ def restore(folder: Path, files: list[Path] | None = None) -> list[Restored]:
             out.append(Restored(path.name, "_original"))
         else:
             out.append(Restored(path.name, "nothing to restore"))
+    from filmgeo.write import sidecar
+
+    sidecar.forget(folder, [r.file for r in out if r.how != "nothing to restore"])
     return out
 
 
