@@ -115,3 +115,50 @@ a gap with an unknown place; a route puts a point every minute along it.
 
 Also on this Mac, in `~/Downloads`: a Foursquare/Swarm data export (`checkins*.json`). That is
 COO-144's input and the next adapter.
+
+## COO-144 — Foursquare / Swarm: named check-ins and passive visits
+
+Landed 5 September 2026. `signals/swarm.py`, wired into `trail_for` and `filmgeo signals`;
+99 tests. The user's own export was in `~/Downloads` (`data-export-29125`): 14,376 check-ins
+since 2009 and 17,536 passive visits since 2018.
+
+### What the export holds, measured
+
+* `checkins<N>.json`: `createdAt` is a `YYYY-MM-DD HH:MM:SS.ffffff` string **in UTC**, with
+  `timeZoneOffset` in minutes east of UTC. Settled against the Photos library: of 154 check-ins
+  in 2026 with a phone photo within 300 m, reading the string as UTC puts the nearest photo a
+  median 6 minutes away (119 of 154 within half an hour); reading it as local wall clock puts it
+  4 hours away. Each carries `lat`/`lng` and `venue.name`.
+* `visits.json`: Swarm's background location — `timeArrived`/`timeDeparted` in the same UTC
+  format, coordinates, `city`, `locationType` in {`Venue` 13,018, `Home` 3,918, `Work` 600};
+  median stay 0.9 h, 90th percentile 18.5 h. April 2026 alone has 152 visits, 65 of them
+  `Home`. No zone offset; the adapter borrows the nearest check-in's within a day, else the
+  photo trail's by instant.
+
+### The adapter
+
+Check-ins become `swarm` trail points labelled with the venue; visits become `visit` points at
+arrival, at departure and every half hour between, labelled with the type and city. Nothing
+here is a constraint — a check-in is where the user was, not where a frame was — and nothing
+here changes the solver: the trail feeds location, clusters and offsets (`geo.place`).
+
+### Effect on the verified rolls
+
+| roll | | ambiguous → ok | GPS error where ok | ambiguous frames whose top cluster is right | clusters carrying a name |
+|---|---|---|---|---|---|
+| `00007037`, K 12 | without | 13 / 24 | 0.02 km, 22 / 24 within 500 m | 5 / 12 | 0 |
+| | with Swarm | 13 / 24 | 0.02 km, 22 / 24 | **7 / 12** | **57** |
+| `00007044`, K 12 | without | 0 / 10 | 0.03 km, 10 / 10 | — | 0 |
+| | with Swarm | 0 / 10 | 0.03 km, 10 / 10 | — | 0 |
+
+Coverage does not move: the ambiguous frames on the 22-day roll have intervals that span both
+the flat and the walks, and more points inside those intervals sharpen the clusters without
+collapsing them to one. What the export buys is names on the choices — "787 Coffee Co.",
+"Brooklyn Heights Promenade", "Home: Brooklyn" — which is what a person needs to pick a cluster
+in one glance, and the top cluster is right two frames more often. Offsets are unchanged
+(37 / 37 and 10 / 10). The at-home ambiguity is not solved, as the issue predicted; the
+`Home` visits will matter on a roll whose frames *are* at home and whose photo trail says
+otherwise.
+
+To use it: copy the export folder to `.filmgeo/signals/swarm/`; `filmgeo signals <roll>`
+confirms how many check-ins and visits it found.
