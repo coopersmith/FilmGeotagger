@@ -131,3 +131,56 @@ def test_round_trip_through_exiftool(roll, tmp_path):
     for tag in ("XMP-dc:Subject", "IPTC:Keywords"):
         subj = t1b[tag]
         assert "filmgeo:manual" in subj and "filmgeo:anchored" not in subj and subj.count("Film") == 1, (tag, subj)
+
+
+@pytest.mark.skipif(shutil.which("exiftool") is None, reason="exiftool not installed")
+def test_full_cycle_backup_write_verify_record_restore_clear(roll, tmp_path):
+    import hashlib
+    import json
+
+    from filmgeo.write import ops
+
+    folder, files, facts = roll
+    sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+    before = {n: sha(p) for n, p in files.items()}
+    p = w.plan("r", folder, ASSIGN, facts, files)
+    res = ops.write_roll(p, tmp_path / "writes")
+    assert res.ok and res.warnings == [] and [c.number for c in res.checks] == [1, 2, 3]
+    assert sorted(x.name for x in res.backed_up) == [files[n].name for n in (1, 2, 3)]
+    assert sha(folder / ops.BACKUP_DIR / files[1].name) == before[1]              # the backup is the pristine scan
+    log = json.loads(res.record.read_text())
+    assert log["roll"] == "r" and len(log["writes"]) == 1
+    wr = log["writes"][0]
+    assert [f["number"] for f in wr["frames"]] == [1, 2, 3] and all(f["verified"] for f in wr["frames"])
+    assert [s["why"] for s in wr["skipped"]] == ["not confirmed", "skipped"]
+
+    # Verification notices a file that no longer says what was written.
+    w.exiftool(["-overwrite_original", "-EXIF:OffsetTimeOriginal=+02:00", str(files[2])])
+    bad = ops.verify(p)
+    assert not bad[1].ok and "OffsetTimeOriginal" in bad[1].problems[0] and bad[0].ok
+
+    # A second write goes through even though _original files exist (the backup is the pristine copy).
+    res2 = ops.write_roll(p, tmp_path / "writes")
+    assert res2.ok and res2.backed_up == [] and len(json.loads(res2.record.read_text())["writes"]) == 2
+    assert sha(folder / ops.BACKUP_DIR / files[1].name) == before[1]              # never overwritten
+
+    # Clear: provenance only, then everything.
+    removed = ops.clear(folder, files=[files[1], files[4]])
+    assert list(removed) == [files[1].name] and "filmgeo:anchored" in removed[files[1].name]
+    t1 = w.read_tags([files[1]])[files[1].resolve()]
+    assert not any(k.startswith("filmgeo:") for k in t1["XMP-dc:Subject"]) and "Kodak Portra 400" in t1["XMP-dc:Subject"]
+    assert t1["ExifIFD:DateTimeOriginal"] == "2026:04:04 10:01:49"
+    ops.clear(folder, everything=True, files=[files[1]])
+    t1 = w.read_tags([files[1]])[files[1].resolve()]
+    assert "ExifIFD:DateTimeOriginal" not in t1 and "GPS:GPSLatitude" not in t1 and "IFD0:Model" not in t1
+    assert "Kodak Portra 400" in t1["XMP-dc:Subject"]
+
+    # Restore: the backup is the pristine scan, so it wins over _original (which after a re-write
+    # or a clear is itself a written file); a file with neither is left alone. All bytes back.
+    done = ops.restore(folder, files=[files[1], files[2], files[4]])
+    assert [(r.file, r.how) for r in done] == [(files[1].name, "backup"), (files[2].name, "backup"), (files[4].name, "nothing to restore")]
+    assert sha(files[1]) == before[1] and sha(files[2]) == before[2] and sha(files[4]) == before[4]
+    assert not files[1].with_name(files[1].name + "_original").exists()
+    # With no backup, _original is the fallback.
+    w.exiftool(["-EXIF:Model=Test", str(files[4])])
+    assert [(r.file, r.how) for r in ops.restore(folder, files=[files[4]])] == [(files[4].name, "_original")] and sha(files[4]) == before[4]

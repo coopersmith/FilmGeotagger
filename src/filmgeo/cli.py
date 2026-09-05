@@ -507,7 +507,7 @@ def write(
     Only frames confirmed in the review UI are written; exiftool keeps `<name>_original` beside
     each file it touches. The argfile it runs is saved under `.filmgeo/writes/` either way.
     """
-    from filmgeo.write import exiftool as w
+    from filmgeo.write import exiftool as w, ops
 
     key, _ = _roll_key(roll)
     if alias:
@@ -545,12 +545,62 @@ def write(
     if dry_run:
         console.print("dry run; add [bold]--write[/] to run exiftool")
         return
-    if not yes and not typer.confirm(f"Write {len(p.frames)} files in {p.folder}? exiftool keeps <name>_original beside each"):
+    if not yes and not typer.confirm(f"Write {len(p.frames)} files in {p.folder}? Originals are copied to {p.folder / ops.BACKUP_DIR} first"):
         raise typer.Exit(0)
-    warnings = w.apply(argfile)
-    for line in warnings:
+    res = ops.write_roll(p)
+    for line in res.warnings:
         console.print(f"[yellow]exiftool:[/] {line}")
-    console.print(f"wrote {len(p.frames)} files" + (f" with {len(warnings)} warnings" if warnings else ""))
+    vt = Table(title=f"read back: {sum(c.ok for c in res.checks)} of {len(res.checks)} verified")
+    for col in ("#", "file", "result"):
+        vt.add_column(col)
+    for c in res.checks:
+        vt.add_row(str(c.number), c.file, "[green]ok[/]" if c.ok else "[red]" + "; ".join(c.problems) + "[/]")
+    console.print(vt)
+    console.print(f"backed up {len(res.backed_up)} new originals to {p.folder / ops.BACKUP_DIR} · record {res.record}")
+    if not res.ok:
+        console.print("[red]some frames did not read back as written[/] — `filmgeo restore` puts the files back")
+        raise typer.Exit(1)
+
+
+@app.command()
+def restore(folder: Path = typer.Argument(..., help="the scan folder"), yes: bool = typer.Option(False, "--yes", "-y")) -> None:
+    """Put a roll's scans back as they were before filmgeo wrote them: exiftool's _original first, the backup folder second."""
+    from filmgeo.write import ops
+
+    if not yes and not typer.confirm(f"Restore every scan in {folder} from its _original or {folder / ops.BACKUP_DIR}?"):
+        raise typer.Exit(0)
+    try:
+        done = ops.restore(folder)
+    except w_error() as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(2)
+    for r in done:
+        console.print(f"  {r.file}: {r.how}")
+    console.print(f"restored {sum(r.how != 'nothing to restore' for r in done)} of {len(done)}")
+
+
+@app.command()
+def clear(
+    folder: Path = typer.Argument(..., help="the scan folder"),
+    everything: bool = typer.Option(False, "--all", help="also remove the written dates, offsets, GPS and Make/Model (descriptive keywords stay)"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """Remove filmgeo's provenance keywords from a roll's scans (and with --all, everything it wrote)."""
+    from filmgeo.write import ops
+
+    what = "the filmgeo: keywords and the written dates, GPS and camera" if everything else "the filmgeo: keywords"
+    if not yes and not typer.confirm(f"Remove {what} from every scan in {folder}?"):
+        raise typer.Exit(0)
+    removed = ops.clear(folder, everything=everything)
+    for name, items in removed.items():
+        console.print(f"  {name}: removed {', '.join(items)}")
+    console.print(f"cleared {len(removed)} files" if removed else "nothing to clear")
+
+
+def w_error():
+    from filmgeo.write.exiftool import WriteError
+
+    return WriteError
 
 
 @app.command()

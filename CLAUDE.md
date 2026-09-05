@@ -64,8 +64,12 @@ shows the plan (`--write` runs it; exiftool keeps `<name>_original`). Three exif
 learned there, in `docs/m4-findings.md`: `FileModifyDate` set as an explicit value with the
 capture offset works in one pass; `+=` on a keyword list duplicates, so every keyword is
 remove-then-add; stale `filmgeo:` provenance must be read from the file and removed by value.
-Next: COO-128 (folder backup, read-back verify against the trusted keys, restore, clear),
-COO-129 (sidecar), COO-130 (write UI), COO-131 (end to end into Photos and Lightroom).
+COO-128 is done: `write/ops.py` — `write --write` runs backup (`<folder>/.filmgeo_backup/`,
+the pristine copy, never overwritten) → write → read-back verify on the trusted keys → a
+record in `.filmgeo/writes/<roll>.json`; `filmgeo restore <folder>` (backup first, then
+`_original`, which after a re-write is itself a written file) and `filmgeo clear <folder>
+[--all]`. Next: COO-129 (sidecar), COO-130 (write UI), COO-131 (end to end into Photos and
+Lightroom).
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
@@ -122,7 +126,9 @@ uv run filmgeo signals <roll>        # trail points + constraints from every ada
 uv run --extra embed filmgeo align <roll>            # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
 uv run --extra embed --extra verify filmgeo verify <roll>   # Claude verdicts -> .filmgeo/verdicts/; costs ~$0.035/frame, asks first
 uv run --extra embed --extra verify filmgeo verify <roll> --inside   # second round: unanchored frames, photos inside their intervals only
-uv run filmgeo write <roll> [--as alias] [--folder dir]      # the write plan for the confirmed frames; --write runs exiftool
+uv run filmgeo write <roll> [--as alias] [--folder dir]      # the write plan for the confirmed frames; --write: backup, write, verify, record
+uv run filmgeo restore <folder>                              # the scans back from .filmgeo_backup/ (or _original)
+uv run filmgeo clear <folder> [--all]                        # remove filmgeo: keywords (and with --all everything written)
 uv run --extra api --extra embed filmgeo serve [roll...]   # review API + UI on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
 (cd web && npm install && npm run build)                  # the UI -> web/dist, which serve mounts at /; `npm run dev` proxies /api to 8765
 uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)
