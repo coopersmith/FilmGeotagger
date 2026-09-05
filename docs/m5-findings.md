@@ -55,3 +55,42 @@ inherits that day. Containment held at every step, which was the criterion.
 The one wrong-day frame left on `00007044` and the eight on `00007037` are frames whose
 groups hold no anchored member — a constraint has nothing to bind them to. That is what
 `filmgeo verify --inside` (COO-149) is for.
+
+## COO-148 — the grayscale second stage
+
+Landed 5 September 2026. `pipeline.exact_ranking`, `possible_variant` in the API, the
+occasion strip's wording, 94 tests.
+
+### What it does
+
+Once a verdict has named a frame's occasion, the photos of that occasion are re-ranked by
+grayscale SigLIP similarity to the frame (`siglip_gray`, the variant COO-146 measured) and
+offered as the frame's "possible photos" — the exact shot, if it exists, should sit near the
+top. It runs only when every vector needed is already cached, because it must never try to
+embed Photos derivatives from a shell that cannot read them; otherwise the occasion is shown
+in colour and the roll says which (`exact_variant`). No API calls either way.
+
+### Measured
+
+On the 35 honest anchored frames (`Roll.anchored` against `library.phone_times`), with the
+*true* event given — the ceiling of any second stage — where the exact photo ranks inside its
+event (median event size 29 photos):
+
+| ranking | median rank | top-1 | top-3 | top-6 | top-8 | top-12 |
+|---|---|---|---|---|---|---|
+| colour | 10 | 3 | 7 | 15 | 17 | 19 |
+| **grayscale** | **7** | 4 | **12** | 17 | 19 | 20 |
+
+Smaller than COO-146's quick read (median 5), which used the sweep's event assignment; this
+is the pipeline's own. The gain is in the top three — 12 of 35 against 7 — which is what a
+person scanning a strip of twelve actually looks at.
+
+On the two verified rolls the stage has little to bite on: of 17 anchored frames the exact
+photo is in the occasion list for one (frame 26 of `00007037`, ranked 4th). The rest are
+either frames whose hand-tagged time is a Lightroom group time with no photo behind it, or
+frames whose verdict named a neighbouring occasion. The second stage inherits the first
+stage's occasion recall (74% at K = 12, COO-146) and cannot repair it; it makes the last
+click cheaper when the occasion is right.
+
+The UI says which ranking it is showing ("ranked in grayscale to find the exact shot — form,
+not colour") and the question for an anchored frame points down to it.

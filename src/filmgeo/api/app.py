@@ -118,6 +118,7 @@ def roll_json(r: RollRun) -> dict:
         for e in r.events
     ]
     base["confirmed"] = sum(1 for o in (r.overrides.frames.values() if r.overrides else ()) if o.confirmed)
+    base["exact_variant"] = r.exact_variant
     meta = pipeline.verdicts_meta(r.key)
     base["cost"] = pipeline.cost_estimate(len(r.verdicts), meta.get("k"), r.outings is not None) | {"model": meta.get("model")}
     folder = Path(r.origin).expanduser()
@@ -162,6 +163,7 @@ def frame_json(r: RollRun, i: int, written: dict[int, dict] | None = None) -> di
         "interval_text": interval_text(a),
         "candidates": cands,
         "possible": possible,
+        "possible_variant": r.exact_variant if a.source in ("anchored", "locked") else "siglip",
         "anchor": _photo(by_uuid[a.anchor_uuid], r) if a.anchor_uuid in by_uuid else None,
         "verdict": None if v is None else {"match": v.match, "confidence": v.confidence, "evidence": v.evidence,
                                            "clues": v.clues, "shown": v.candidates},
