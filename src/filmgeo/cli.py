@@ -495,6 +495,65 @@ def align(
 
 
 @app.command()
+def write(
+    roll: str = typer.Argument(..., help="roll key (the assignments file name), e.g. 00007044 or a scan folder"),
+    folder: Path = typer.Option(None, help="the scan folder to write into; default: where the roll was aligned from"),
+    alias: str = typer.Option(None, "--as", help="the assignments/facts files are named this instead of the roll"),
+    dry_run: bool = typer.Option(True, "--dry-run/--write", help="show the plan (default) or run exiftool"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="write without asking"),
+) -> None:
+    """Write the confirmed frames' dates, offsets, GPS and keywords into the scan files.
+
+    Only frames confirmed in the review UI are written; exiftool keeps `<name>_original` beside
+    each file it touches. The argfile it runs is saved under `.filmgeo/writes/` either way.
+    """
+    from filmgeo.write import exiftool as w
+
+    key, _ = _roll_key(roll)
+    if alias:
+        key = alias
+    try:
+        a = w.load_assignments(key)
+        target = folder or (Path(roll) if Path(roll).expanduser().is_dir() else None)
+        files = w.scan_files(target) if target else None
+        current = w.current_tags(files) if files else None
+        p = w.plan(key, target, a, files=files, current=current)
+    except w.WriteError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(2)
+
+    table = Table(title=f"{key}: {len(p.frames)} of {p.n_total} frames to write -> {p.folder}")
+    for col in ("#", "file", "now", "new local time", "offset", "GPS", "keywords", "action"):
+        table.add_column(col)
+    rows = {f.number: f for f in p.frames}
+    skips = {s.number: s for s in p.skipped}
+    for n in sorted({*rows, *skips}):
+        if n in rows:
+            f = rows[n]
+            gps = f"{f.lat:.5f}, {f.lon:.5f}" if f.lat is not None else "[yellow]—[/]"
+            prov = " ".join(k.removeprefix(w.PROVENANCE_PREFIX) for k in f.keywords if k.startswith(w.PROVENANCE_PREFIX))
+            table.add_row(str(n), f.path.name, f.current or "[dim]none[/]", f.local, f.offset, gps, prov, "[green]write[/]")
+        else:
+            s = skips[n]
+            table.add_row(str(n), s.path.name if s.path else "?", "", "", "", "", "", f"[dim]{s.why}[/]")
+    console.print(table)
+    argfile = w.save_argfile(p)
+    console.print(f"argfile: {argfile}" + (f"  · keywords: {', '.join(k for k in p.frames[0].keywords if not k.startswith(w.PROVENANCE_PREFIX))}" if p.frames else ""))
+    if not p.frames:
+        console.print("[yellow]nothing to write[/] — confirm frames in the review UI first")
+        return
+    if dry_run:
+        console.print("dry run; add [bold]--write[/] to run exiftool")
+        return
+    if not yes and not typer.confirm(f"Write {len(p.frames)} files in {p.folder}? exiftool keeps <name>_original beside each"):
+        raise typer.Exit(0)
+    warnings = w.apply(argfile)
+    for line in warnings:
+        console.print(f"[yellow]exiftool:[/] {line}")
+    console.print(f"wrote {len(p.frames)} files" + (f" with {len(warnings)} warnings" if warnings else ""))
+
+
+@app.command()
 def serve(
     rolls: list[str] = typer.Argument(None, help="scan folders or roll keys to open, besides what .filmgeo/ already knows"),
     host: str = typer.Option("127.0.0.1", help="bind address; keep it local, nothing authenticates"),

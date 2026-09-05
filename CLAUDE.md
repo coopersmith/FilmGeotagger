@@ -57,8 +57,15 @@ COO-150 (the guided flow: `review.ts` derives the roll's condition and next acti
 "next" strip with the bulk confirms under "more", one question per frame with the ways
 forward as buttons, time and facts folded, a five-step welcome; `.` jumps to the next frame
 that needs you; "same day as" an anchored frame now binds to its day via
-`model.anchored_days`). Both done. Then M4, the write step (COO-127 first), which reads `.filmgeo/assignments/<roll>.json` and
-requires `status: confirmed`.
+`model.anchored_days`). Both done. 
+M4 (the write step) is in progress. COO-127 is done: `write/exiftool.py` turns a roll's
+*confirmed* frames into one `-@` argfile with PLAN.md's tag set and `filmgeo write <roll>`
+shows the plan (`--write` runs it; exiftool keeps `<name>_original`). Three exiftool facts
+learned there, in `docs/m4-findings.md`: `FileModifyDate` set as an explicit value with the
+capture offset works in one pass; `+=` on a keyword list duplicates, so every keyword is
+remove-then-add; stale `filmgeo:` provenance must be read from the file and removed by value.
+Next: COO-128 (folder backup, read-back verify against the trusted keys, restore, clear),
+COO-129 (sidecar), COO-130 (write UI), COO-131 (end to end into Photos and Lightroom).
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:
@@ -115,6 +122,7 @@ uv run filmgeo signals <roll>        # trail points + constraints from every ada
 uv run --extra embed filmgeo align <roll>            # solve -> .filmgeo/assignments/<roll>.json + reports/align_<roll>.html
 uv run --extra embed --extra verify filmgeo verify <roll>   # Claude verdicts -> .filmgeo/verdicts/; costs ~$0.035/frame, asks first
 uv run --extra embed --extra verify filmgeo verify <roll> --inside   # second round: unanchored frames, photos inside their intervals only
+uv run filmgeo write <roll> [--as alias] [--folder dir]      # the write plan for the confirmed frames; --write runs exiftool
 uv run --extra api --extra embed filmgeo serve [roll...]   # review API + UI on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
 (cd web && npm install && npm run build)                  # the UI -> web/dist, which serve mounts at /; `npm run dev` proxies /api to 8765
 uv run --extra embed python scripts/embed_window.py 2026-05-01 2026-05-27   # Terminal.app only (Photos access)

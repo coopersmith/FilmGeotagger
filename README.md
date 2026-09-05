@@ -14,7 +14,9 @@ M0 (write-path proof), M1 (matching-quality harness), M2 (alignment engine) and 
 are complete. Findings: [docs/m0-findings.md](docs/m0-findings.md),
 [docs/m1-findings.md](docs/m1-findings.md), [docs/m2-findings.md](docs/m2-findings.md),
 [docs/m3-findings.md](docs/m3-findings.md). The review UI walks each roll through five steps:
-tell it when, let Claude look, confirm the greens, resolve the rest, write. M4 (the write step) is next.
+tell it when, let Claude look, confirm the greens, resolve the rest, write. M4 (the write step) is in
+progress: `filmgeo write <roll>` shows what the confirmed frames would get, `--write` writes it
+([docs/m4-findings.md](docs/m4-findings.md)).
 
 ```bash
 filmgeo index                 # read the Photos library into the local cache (slow when cold)
