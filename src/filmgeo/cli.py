@@ -322,6 +322,14 @@ def signals(
         console.print(f"swarm: {len(sw.checkins)} check-ins and {len(sw.visits)} visits in the export under {SWARM_DIR}")
     else:
         console.print(f"[dim]no Swarm export: drop the data-export folder under {SWARM_DIR} to use check-ins and visits[/]")
+    from filmgeo.signals.timeline import TIMELINE_DIR, Timeline
+
+    if TIMELINE_DIR.is_dir():
+        tl = Timeline(TIMELINE_DIR, offset_at=trail.offset_at)
+        sigs.append(tl)
+        console.print(f"google timeline: {len(tl.files())} recognised file(s) under {TIMELINE_DIR} ({', '.join(sorted({s for s, _ in tl.files()})) or 'none'})")
+    else:
+        console.print(f"[dim]no Google Timeline export: drop Timeline.json (or a Takeout's Location History) under {TIMELINE_DIR}[/]")
     ev = collect(sigs, default)
     window = effective_window(ev.constraints, default)
 
