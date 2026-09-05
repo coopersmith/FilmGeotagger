@@ -85,3 +85,31 @@ so the next write starts clean.
 `clear` reads each file's `filmgeo:` keywords and removes them by value (the user's
 descriptive keywords stay); `--all` also blanks the written dates, offsets, GPS and
 Make/Model. It writes through the same argfile path, so it, too, leaves the backup alone.
+
+## COO-129 — the sidecar, and writing only what changed
+
+Landed 5 September 2026. `write/sidecar.py`; `plan()` skips unchanged frames; the store
+adopts a sidecar's decisions; `written` state in the API; 88 tests.
+
+### What the sidecar is for
+
+`<roll>/filmgeo.json` travels with the scans, where `.filmgeo/` is one machine's cache. Per
+frame: the written local time and offset, GPS, source, confidence, interval, anchor photo,
+Claude's evidence sentence, the write timestamp and whether it verified; plus the roll facts
+and the user's overrides as they stood. Each write merges into it — frames written now are
+replaced, the others keep their record — so the file is always the current state of the roll
+as written.
+
+Two things read it:
+
+* **`plan()` writes only what changed.** A confirmed frame whose local time, offset, GPS and
+  keywords equal the sidecar's record is skipped as "unchanged"; `--force` writes anyway.
+  Moving one frame by an hour in the UI and writing again touches one file. A frame whose
+  last write did not verify is never "unchanged".
+* **Reopening a roll without its caches.** When the store loads a roll from a scan folder,
+  `adopt()` seeds missing facts and overrides files from the sidecar, so the review UI shows
+  the prior decisions and can change them. It never overwrites files that exist.
+
+The API now says per frame what is in the file and whether the current assignment differs
+(`written.changed`), and per roll whether it is writable (a scan folder, not the Photos
+library) and when it was last written. That is what COO-130's write page needs.

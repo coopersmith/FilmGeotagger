@@ -117,10 +117,19 @@ def roll_json(r: RollRun) -> dict:
     base["confirmed"] = sum(1 for o in (r.overrides.frames.values() if r.overrides else ()) if o.confirmed)
     meta = pipeline.verdicts_meta(r.key)
     base["cost"] = pipeline.cost_estimate(len(r.verdicts), meta.get("k"), r.outings is not None) | {"model": meta.get("model")}
+    folder = Path(r.origin).expanduser()
+    base["writable"] = folder.is_dir()
+    base["written"] = None
+    if folder.is_dir():
+        from filmgeo.write import sidecar
+
+        side = sidecar.load(folder)
+        if side:
+            base["written"] = {"at": side.get("written_at"), "frames": len(side.get("frames", []))}
     return base
 
 
-def frame_json(r: RollRun, i: int) -> dict:
+def frame_json(r: RollRun, i: int, written: dict[int, dict] | None = None) -> dict:
     f, a = r.frames[i], r.solution.assignments[i]
     by_uuid = {p.uuid: p for p in r.pool}
     base = pipeline.to_json(r)["frames"][i]
@@ -156,12 +165,26 @@ def frame_json(r: RollRun, i: int) -> dict:
         "override": None if o is None else dataclasses.asdict(o),
         "fact": None if ff is None or ff.is_empty else dataclasses.asdict(ff),
         "outing": next((k for k, g in enumerate(r.outings.groups, 1) if f.number in g["frames"]), None) if r.outings else None,
+        "written": _written_state(a, (written or {}).get(f.number)),
     })
     return base
 
 
-def frames_json(r: RollRun) -> list[dict]:
-    return [frame_json(r, i) for i in range(r.n_frames)]
+def _written_state(a, w: dict | None) -> dict | None:
+    """What the sidecar says is in the file, and whether the current assignment differs from it."""
+    if not w:
+        return None
+    from filmgeo.write.exiftool import local_stamp
+
+    local, offset, _ = local_stamp(a.time.isoformat(), a.tzoffset)
+    same_loc = (w.get("lat") is None and a.lat is None) or (w.get("lat") is not None and a.lat is not None
+                                                            and abs(w["lat"] - a.lat) < 1e-6 and abs(w["lon"] - a.lon) < 1e-6)
+    return {"at": w.get("written_at"), "local": w.get("local"), "offset": w.get("offset"), "lat": w.get("lat"), "lon": w.get("lon"),
+            "verified": w.get("verified"), "changed": not (w.get("local") == local and w.get("offset") == offset and same_loc)}
+
+
+def frames_json(r: RollRun, written: dict[int, dict] | None = None) -> list[dict]:
+    return [frame_json(r, i, written) for i in range(r.n_frames)]
 
 
 def facts_json(facts: RollFacts) -> dict:
@@ -212,12 +235,12 @@ def create_app(store: Store | None = None) -> FastAPI:
 
     @app.get("/api/rolls/{key}/frames")
     def get_frames(key: str) -> list[dict]:
-        return frames_json(run_for(key))
+        return frames_json(run_for(key), store.written(key))
 
     @app.get("/api/rolls/{key}/frames/{n}")
     def get_frame(key: str, n: int) -> dict:
         r = run_for(key)
-        return frame_json(r, frame_index(r, n))
+        return frame_json(r, frame_index(r, n), store.written(key))
 
     @app.get("/api/rolls/{key}/photos")
     def roll_photos(key: str, event: int | None = Query(None), start: str | None = Query(None), end: str | None = Query(None),
@@ -299,7 +322,7 @@ def create_app(store: Store | None = None) -> FastAPI:
         if problems:
             raise HTTPException(422, "; ".join(problems))
         new = solved(lambda: store.update(key, facts=facts, overrides=overrides))
-        return frames_json(new)
+        return frames_json(new, store.written(key))
 
     @app.post("/api/rolls/{key}/confirm")
     def confirm(key: str, body: ConfirmBody) -> list[dict]:
@@ -316,7 +339,7 @@ def create_app(store: Store | None = None) -> FastAPI:
                 continue
             overrides.frame(f.number).confirmed = body.confirmed
         new = solved(lambda: store.update(key, overrides=overrides))
-        return frames_json(new)
+        return frames_json(new, store.written(key))
 
     @app.get("/api/rolls/{key}/facts")
     def get_facts(key: str) -> dict:
@@ -352,7 +375,7 @@ def create_app(store: Store | None = None) -> FastAPI:
         run_for(key)
         body = body or RealignBody()
         new = solved(lambda: store.widen(key) if body.widen else store.reload(key))
-        return roll_json(new) | {"frames": frames_json(new)}
+        return roll_json(new) | {"frames": frames_json(new, store.written(key))}
 
     @app.get("/api/rolls/{key}/frames/{n}/image")
     def frame_image(key: str, n: int, size: str = Query("small", pattern="^(small|large)$")):

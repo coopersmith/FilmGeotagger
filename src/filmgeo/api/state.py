@@ -142,6 +142,11 @@ class Store:
     def _load(self, key: str, facts: RollFacts | None = None, overrides: RollOverrides | None = None,
               widen: bool = False) -> RollRun:
         origin = self.origin_for(key)
+        folder = Path(origin).expanduser()
+        if folder.is_dir():
+            from filmgeo.write import sidecar
+
+            sidecar.adopt(key, folder, self.facts_dir, self.overrides_dir)   # a roll written elsewhere: its decisions come along
         facts = facts or RollFacts.load(key, self.facts_dir)
         overrides = overrides or RollOverrides.load(key, self.overrides_dir)
         run = self.loader(origin, alias=key, assets=self.assets, facts=facts, overrides=overrides, widen=widen)
@@ -184,6 +189,18 @@ class Store:
             self.runs[key] = new
             pipeline.save(new, self.assignments_dir)
             return new
+
+    def written(self, key: str) -> dict[int, dict]:
+        """The sidecar's per-frame record for a roll aligned from a scan folder; empty otherwise."""
+        try:
+            folder = Path(self.origin_for(key)).expanduser()
+        except KeyError:
+            return {}
+        if not folder.is_dir():
+            return {}
+        from filmgeo.write import sidecar
+
+        return sidecar.written_frames(folder)
 
     def edit(self, key: str) -> tuple[RollFacts, RollOverrides]:
         """Deep copies to edit; hand them back to `update`, which discards them if the solve fails."""

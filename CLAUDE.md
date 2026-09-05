@@ -68,8 +68,12 @@ COO-128 is done: `write/ops.py` — `write --write` runs backup (`<folder>/.film
 the pristine copy, never overwritten) → write → read-back verify on the trusted keys → a
 record in `.filmgeo/writes/<roll>.json`; `filmgeo restore <folder>` (backup first, then
 `_original`, which after a re-write is itself a written file) and `filmgeo clear <folder>
-[--all]`. Next: COO-129 (sidecar), COO-130 (write UI), COO-131 (end to end into Photos and
-Lightroom).
+[--all]`. COO-129 is done: `write/sidecar.py` writes `<roll>/filmgeo.json` (per-frame written values,
+source, confidence, interval, anchor, Claude's evidence, timestamp, verified; plus facts and
+overrides), `plan()` skips frames the sidecar says are written as they stand (`--force`
+otherwise), and the store adopts a sidecar's facts/overrides when a roll's caches are gone.
+The API carries `written` per frame (with `changed`) and `writable`/`written` per roll.
+Next: COO-130 (write UI), COO-131 (end to end into Photos and Lightroom).
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:

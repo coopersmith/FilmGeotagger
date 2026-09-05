@@ -148,7 +148,7 @@ class FrameWrite:
 class Skipped:
     number: int
     path: Path | None
-    why: str                      # "not confirmed" | "skipped" | "no file"
+    why: str                      # "not confirmed" | "skipped" | "no file" | "unchanged"
 
 
 @dataclass
@@ -191,13 +191,18 @@ def scan_files(folder: Path) -> dict[int, Path]:
 
 
 def plan(key: str, folder: Path | None = None, assignments: dict | None = None, facts: RollFacts | None = None,
-         files: dict[int, Path] | None = None, current: dict[int, "Current"] | None = None) -> WritePlan:
+         files: dict[int, Path] | None = None, current: dict[int, "Current"] | None = None,
+         written: dict[int, dict] | None = None, force: bool = False) -> WritePlan:
     """What would be written for a roll: its confirmed frames, and why the rest are left alone.
 
     `folder` defaults to the assignments' `origin`; a roll whose origin is a hand-tagged key
     has its frames inside the Photos library and cannot be written to. `current` is what the
-    files say now (`current_tags`), for the preview and for replacing stale provenance.
+    files say now (`current_tags`), for the preview and for replacing stale provenance;
+    `written` is the sidecar's record, so a frame already written as it stands is left alone
+    unless `force`.
     """
+    from filmgeo.write import sidecar
+
     a = assignments if assignments is not None else load_assignments(key)
     facts = facts or RollFacts.load(key)
     if folder is None:
@@ -226,14 +231,18 @@ def plan(key: str, folder: Path | None = None, assignments: dict | None = None, 
             continue
         local, offset, instant = local_stamp(fr["time"], fr.get("tzoffset"))
         has_loc = fr.get("lat") is not None and fr.get("lon") is not None
-        frames.append(FrameWrite(
+        fw = FrameWrite(
             number=n, path=path, local=local, offset=offset, instant=instant,
             lat=fr.get("lat") if has_loc else None, lon=fr.get("lon") if has_loc else None,
             keywords=[*descriptive, *provenance(fr["source"], float(fr.get("confidence", 0.0)), has_loc)],
             make=make, model=model, source=fr["source"], confidence=float(fr.get("confidence", 0.0)),
             anchor_uuid=fr.get("anchor_uuid"), interval=(fr["t_lo"], fr["t_hi"]),
             current=(current or {}).get(n, Current()).date, stale=(current or {}).get(n, Current()).provenance,
-        ))
+        )
+        if not force and sidecar.unchanged(fw, (written or {}).get(n)):
+            skipped.append(Skipped(n, path, "unchanged"))
+            continue
+        frames.append(fw)
     return WritePlan(key, folder, frames, skipped)
 
 

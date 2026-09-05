@@ -184,3 +184,50 @@ def test_full_cycle_backup_write_verify_record_restore_clear(roll, tmp_path):
     # With no backup, _original is the fallback.
     w.exiftool(["-EXIF:Model=Test", str(files[4])])
     assert [(r.file, r.how) for r in ops.restore(folder, files=[files[4]])] == [(files[4].name, "_original")] and sha(files[4]) == before[4]
+
+
+@pytest.mark.skipif(shutil.which("exiftool") is None, reason="exiftool not installed")
+def test_sidecar_written_and_only_changed_frames_rewrite(roll, tmp_path):
+    import json
+
+    from filmgeo.align.overrides import RollOverrides
+    from filmgeo.write import ops, sidecar
+
+    folder, files, facts = roll
+    facts.frame(3).when = "2026-04-05"
+    ov = RollOverrides("r")
+    ov.frame(3).anchor = "u3"
+    ov.frame(1).confirmed = True
+    verdicts = {1: {"match": "u", "confidence": 0.9, "evidence": "same sofa", "candidates": ["u"], "clues": {}}}
+    p = w.plan("r", folder, ASSIGN, facts, files)
+    res = ops.write_roll(p, tmp_path / "writes", assignments=ASSIGN, verdicts=verdicts, facts=facts, overrides=ov)
+    assert res.ok and res.sidecar == folder / "filmgeo.json"
+    side = json.loads(res.sidecar.read_text())
+    assert side["roll"] == "r" and [f["number"] for f in side["frames"]] == [1, 2, 3]
+    f1 = side["frames"][0]
+    first_f1 = dict(f1)
+    assert f1["local"] == "2026:04:04 10:01:49" and f1["offset"] == "-04:00" and f1["evidence"] == "same sofa" and f1["verified"] is True
+    assert f1["source"] == "anchored" and f1["anchor_uuid"] == "u" and f1["interval"] == [ASSIGN["frames"][0]["time"]] * 2
+    assert side["facts"]["camera"] == "Mamiya 7II" and side["facts"]["frames"]["3"]["when"] == "2026-04-05"
+    assert side["overrides"]["3"]["anchor"] == "u3" and side["overrides"]["1"]["confirmed"] is True
+
+    # Nothing changed: the next plan writes nothing.
+    p2 = w.plan("r", folder, ASSIGN, facts, files, written=sidecar.written_frames(folder))
+    assert p2.frames == [] and [(s.number, s.why) for s in p2.skipped][:3] == [(1, "unchanged"), (2, "unchanged"), (3, "unchanged")]
+    assert len(w.plan("r", folder, ASSIGN, facts, files, written=sidecar.written_frames(folder), force=True).frames) == 3
+    # Frame 2 moved by an hour: only it is written, and the sidecar keeps frames 1 and 3.
+    moved = {**ASSIGN, "frames": [dict(f, time="2026-04-04T11:30:00-04:00") if f["number"] == 2 else f for f in ASSIGN["frames"]]}
+    p3 = w.plan("r", folder, moved, facts, files, written=sidecar.written_frames(folder))
+    assert [f.number for f in p3.frames] == [2]
+    res3 = ops.write_roll(p3, tmp_path / "writes", assignments=moved, verdicts=verdicts, facts=facts, overrides=ov)
+    side = json.loads(res3.sidecar.read_text())
+    assert [f["number"] for f in side["frames"]] == [1, 2, 3] and side["frames"][1]["local"] == "2026:04:04 11:30:00"
+    assert side["frames"][0] == first_f1                                     # untouched frames keep their record
+
+    # Reopening on a machine without .filmgeo/: adopt seeds facts and overrides from the sidecar.
+    made = sidecar.adopt("r", folder, tmp_path / "f", tmp_path / "o")
+    assert made == ["facts", "overrides"]
+    rf = RollFacts.load("r", tmp_path / "f")
+    assert rf.camera == "Mamiya 7II" and rf.frames[3].when == "2026-04-05"
+    assert RollOverrides.load("r", tmp_path / "o").frames[3].anchor == "u3"
+    assert sidecar.adopt("r", folder, tmp_path / "f", tmp_path / "o") == []      # never overwrites what exists
