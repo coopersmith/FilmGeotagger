@@ -66,13 +66,25 @@ class Solution:
 
 
 def _pair_transitions(model: RollModel, i: int) -> np.ndarray:
-    """Transition matrix for frames i -> i+1, with the same-outing bonus applied if earned."""
+    """Transition matrix for frames i -> i+1 inside one outing: the joint-day penalty, and the (off) bonus.
+
+    Two consecutive frames Claude grouped into one outing may not change calendar day: every
+    transition between states whose day ranges do not meet costs `outing_day_penalty`. That is
+    the joint constraint COO-147 asked for — an outing maps onto a day, and the frames inside
+    it are then placed by similarity and anchors as before — expressed pairwise, which is
+    exact for the chain a first-order model can see.
+    """
     tr = model.transitions
     if (i, i + 1) not in model.same_outing:
         return tr
-    ev = np.array([s.event if s.event is not None else -1 for s in model.states])
-    same = (ev[:, None] == ev[None, :]) & (ev[:, None] >= 0)
-    return np.where(same & np.isfinite(tr), tr + model.params.outing_bonus, tr)
+    out = tr
+    if model.params.outing_day_penalty:
+        out = np.where(model.same_day() | ~np.isfinite(tr), out, out - model.params.outing_day_penalty)
+    if model.params.outing_bonus:
+        ev = np.array([s.event if s.event is not None else -1 for s in model.states])
+        same = (ev[:, None] == ev[None, :]) & (ev[:, None] >= 0)
+        out = np.where(same & np.isfinite(tr), out + model.params.outing_bonus, out)
+    return out
 
 
 def viterbi(model: RollModel, kinds: set[str] | None = None) -> tuple[list[int], float]:

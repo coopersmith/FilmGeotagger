@@ -281,3 +281,48 @@ def test_same_day_as_an_anchored_frame_binds_to_its_day():
     assert a[4].t_lo >= at(2)                        # frame 5 is only bound by order
     # A pair with no anchored side derives nothing.
     assert anchored_days(anchors, [Constraint("frame", "user", frame=4, same_day_as=5)]) == []
+
+
+def test_outing_is_a_joint_day_constraint():
+    # Frames 0-2 are one outing. Frame 0 is anchored to day 2 at 0.9; frame 2 has a weaker
+    # verdict on day 9. Left to itself the solver keeps both (a week's jump is cheap next to a
+    # 0.6 anchor); as one outing they cannot be a week apart, so the weaker anchor goes and the
+    # whole group sits on day 2.
+    anchors = [anchor(0, 2, 10, 0, conf=0.9), anchor(2, 9, 13, 2, conf=0.6)]
+    loose = solve(build_model(WINDOW, EVENTS, 3, anchors, params=AlignParams(outing_day_penalty=0.0)))
+    assert loose.anchored == 2
+    joint = solve(build_model(WINDOW, EVENTS, 3, anchors, same_outing={(0, 1), (1, 2)}))
+    a = joint.assignments
+    assert joint.anchored == 1 and a[0].source == "anchored"
+    assert all(at(2) <= x.time < at(3) for x in a), [x.time for x in a]
+    # With a strong anchor right after the group on day 9, the evidence balance moves the whole
+    # group to day 9 (a week's jump and a lost 0.6 anchor cost more than frame 0's 0.9). Either
+    # way the group shares one day — that is the constraint — and the frame after is free.
+    anchors2 = anchors + [anchor(3, 9, 14, 2, conf=0.9)]
+    after = solve(build_model(WINDOW, EVENTS, 4, anchors2, same_outing={(0, 1), (1, 2)}))
+    assert after.assignments[3].source == "anchored" and after.assignments[3].time == at(9, 14)
+    assert len({x.time.date() for x in after.assignments[:3]}) == 1
+
+
+def test_outing_penalty_yields_to_a_lock():
+    # Two locked frames in one outing on different days contradict the group; the solve still
+    # goes through (a finite penalty, not -inf) and both locks hold.
+    anchors = [anchor(0, 2, 10, 0, conf=1.0, locked=True), anchor(1, 9, 13, 2, conf=1.0, locked=True)]
+    sol = solve(build_model(WINDOW, EVENTS, 2, anchors, same_outing={(0, 1)}))
+    assert sol.anchored == 2
+
+
+def test_same_day_matrix_reads_day_ranges():
+    model = build_model(WINDOW, EVENTS, 2, [anchor(0, 2, 10, 0)])
+    sd = model.same_day()
+    idx = {s.label(): j for j, s in enumerate(model.states)}
+    e0 = next(j for j, s in enumerate(model.states) if s.kind == "event" and s.event == 0 and s.after_frame is None)
+    e2 = next(j for j, s in enumerate(model.states) if s.kind == "event" and s.event == 2 and s.after_frame is None)
+    gap = next(j for j, s in enumerate(model.states) if s.kind == "gap" and s.t_lo == at(2, 17))   # day 2 evening, up to midnight
+    assert model.states[gap].t_hi == at(3)                                                            # gaps are cut at midnight
+    gap8 = next(j for j, s in enumerate(model.states) if s.kind == "gap" and s.t_lo == at(9))       # day 9 morning, up to the event
+    assert sd[e0, e0] and not sd[e0, e2] and sd[e0, gap] and not sd[gap, e2] and sd[gap8, e2]
+    gaps = [s for s in model.states if s.kind == "gap"]
+    assert all(s.t_lo.date() == (s.t_hi - timedelta(seconds=1)).date() for s in gaps)
+    assert all(sd[j, k] for j in model.outside for k in range(len(model.states)))
+    assert idx  # labels are unique enough to build

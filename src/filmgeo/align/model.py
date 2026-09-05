@@ -108,6 +108,11 @@ class AlignParams:
     # holding the baby", which says nothing about which day. The pass is kept for its
     # descriptions and out-of-sequence flags; using groups as joint day constraints is COO-147.
     outing_bonus: float = 0.0
+    # Same-outing pairs as a *joint day* constraint (COO-147): two consecutive frames Claude put
+    # in one outing may not sit on different calendar days. A strong finite penalty rather than
+    # -inf, so a user lock that contradicts a group still solves (the group loses, visibly)
+    # instead of leaving no path. log-odds of about 400:1 against splitting an outing across days.
+    outing_day_penalty: float = 6.0
     # Frame place facts: how far a state's location may be from the stated place.
     place_radius_m: float = 2000.0
 
@@ -196,6 +201,19 @@ class RollModel:
     def outside(self) -> list[int]:
         return [i for i, s in enumerate(self.states) if s.kind == "outside"]
 
+    def same_day(self) -> np.ndarray:
+        """(S, S) bool: can a frame in state a and the next frame in state b be on one calendar day?
+
+        A state covers the days from its start to its end (a week-long gap covers seven); two
+        states are compatible if their day ranges intersect. Outside states are always
+        compatible — they carry their own penalty. Days are read in each state's own zone.
+        """
+        if getattr(self, "_same_day", None) is None:
+            lo = np.array([s.t_lo.date().toordinal() if s.kind != "outside" else -10**9 for s in self.states])
+            hi = np.array([s.t_hi.date().toordinal() if s.kind != "outside" else 10**9 for s in self.states])
+            self._same_day = (lo[:, None] <= hi[None, :]) & (lo[None, :] <= hi[:, None])
+        return self._same_day
+
     def anchors_for(self, frame: int) -> list[int]:
         return [i for i, s in enumerate(self.states) if s.kind == "anchor" and s.frame == frame]
 
@@ -204,7 +222,27 @@ class RollModel:
 # States
 
 
+def _day_pieces(lo: datetime, hi: datetime) -> list[tuple[datetime, datetime]]:
+    """[lo, hi) cut at local midnights, in `lo`'s own zone, so each piece lies within one calendar day."""
+    out = []
+    cur = lo
+    while cur < hi:
+        nxt = min(hi, (cur + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0))
+        if nxt <= cur:            # a piece that starts exactly at midnight
+            nxt = min(hi, cur + timedelta(days=1))
+        out.append((cur, nxt))
+        cur = nxt
+    return out or [(lo, hi)]
+
+
 def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> list[State]:
+    """One state per event, one gap state per calendar day between events, anchors with heads and tails.
+
+    Gaps are cut at midnight so a state never spans two days: that keeps the joint-day
+    constraint (COO-147) exact — a week-long gap would otherwise be "the same day" as both
+    ends of the week — and gives the posterior, and the timeline's best-days summary, a day's
+    resolution inside long silences.
+    """
     states: list[State] = []
     prev_end = window.start
     for e in events:
@@ -212,11 +250,11 @@ def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> 
         if hi < lo:
             continue
         if lo > prev_end:
-            states.append(State("gap", prev_end, lo))
+            states.extend(State("gap", a, b) for a, b in _day_pieces(prev_end, lo))
         states.append(State("event", lo, hi, e.lat, e.lon, event=e.index))
         prev_end = hi
     if window.end > prev_end:
-        states.append(State("gap", prev_end, window.end))
+        states.extend(State("gap", a, b) for a, b in _day_pieces(prev_end, window.end))
     spans = {e.index: (e.start, e.end) for e in events}
     by_index = {e.index: e for e in events}
     headed: set[tuple[int, datetime]] = set()
