@@ -146,6 +146,7 @@ class RollRun:
     trail: list[TrailPoint] = field(default_factory=list)
     overrides: RollOverrides | None = None
     possible: dict[int, list[retrieve.Candidate]] = field(default_factory=dict)   # by frame number: inside the interval
+    exact_variant: str = "siglip"      # how anchored frames' occasion photos are ranked: siglip_gray when cached
 
     @property
     def n_frames(self) -> int:
@@ -173,7 +174,8 @@ def frame_vectors(frames: list[FrameRef], variant: str = "siglip") -> np.ndarray
     if missing:
         from filmgeo.embed import models
 
-        embedder = getattr(models, {"siglip": "SigLIP", "dinov2": "DINOv2"}[variant])()
+        name, gray = {"siglip": ("SigLIP", False), "siglip_gray": ("SigLIP", True), "dinov2": ("DINOv2", False)}[variant]
+        embedder = getattr(models, name)(grayscale=gray)
         paths = {f.key: f.path for f in frames}
         from filmgeo.embed.cache import embed_cached
 
@@ -252,12 +254,50 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     rev = reverse_test(inputs, solution)
     check = window_check(model, solution, n_verified=len(verdicts) or None)
     possible = possible_candidates(frames, solution, pool, event_ids, sims)
+    exact_variant = exact_ranking(frames, solution, pool, event_ids, possible)
     return RollRun(key, frames, facts, window, window_source, pool, events, event_ids, sims, candidates,
                    verdicts, inputs, solution, rev, check, _trail_counts(trail), outings,
-                   origin=origin, trail=trail, overrides=overrides, possible=possible)
+                   origin=origin, trail=trail, overrides=overrides, possible=possible, exact_variant=exact_variant)
 
 
 POSSIBLE_K = 8
+EXACT_K = 12
+EXACT_VARIANT = "siglip_gray"
+
+
+def exact_ranking(frames: list[FrameRef], solution: Solution, pool: list[Asset], event_ids: list[int],
+                  possible: dict[int, list[retrieve.Candidate]], variant: str = EXACT_VARIANT, k: int = EXACT_K) -> str:
+    """The grayscale second stage (COO-148): rank an anchored frame's occasion for the exact shot.
+
+    SigLIP in colour finds the scene, not the shot — the exact anchor photo sits median 10th
+    inside its own event. In grayscale it sits median 5th (COO-146), because film and phone
+    disagree on colour more than on form. So once verification has named the occasion, the
+    photos of that occasion are re-ranked by grayscale similarity and offered as "the exact
+    photo, if it exists". Only when every vector needed is cached: this never embeds Photos
+    derivatives (unreadable from most shells) and falls back to the colour ranking, saying so.
+    Returns the variant actually used. Edits `possible` in place for anchored frames.
+    """
+    anchored = [(i, a) for i, a in enumerate(solution.assignments) if a.source in ("anchored", "locked") and a.event is not None]
+    if not anchored:
+        return "siglip"
+    cache = VectorCache(variant)
+    frame_keys = [frames[i].key for i, _ in anchored]
+    members = {e: [j for j, ev in enumerate(event_ids) if ev == e] for e in {a.event for _, a in anchored}}
+    pool_keys = [pool[j].uuid for js in members.values() for j in js]
+    if cache.missing(frame_keys) or cache.missing(pool_keys):
+        for i, a in anchored:                      # colour, but the whole occasion, most similar first
+            possible[frames[i].number] = possible.get(frames[i].number, [])[:k]
+        return "siglip"
+    for i, a in enumerate(solution.assignments):
+        if a.source not in ("anchored", "locked") or a.event is None:
+            continue
+        js = members[a.event]
+        fv = cache.get([frames[i].key])[0]
+        pv = cache.get([pool[j].uuid for j in js])
+        scores = pv @ fv
+        order = sorted(range(len(js)), key=lambda x: -scores[x])[:k]
+        possible[frames[i].number] = [retrieve.Candidate(pool[js[x]], float(scores[x]), {variant: float(scores[x])}) for x in order]
+    return variant
 
 
 def possible_candidates(frames: list[FrameRef], solution: Solution, pool: list[Asset], event_ids: list[int],

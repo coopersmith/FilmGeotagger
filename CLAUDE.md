@@ -83,7 +83,12 @@ M5 has started with COO-147: Claude's outing groups are a *joint day* constraint
 Measured on the verified rolls with nothing else changed: the ten-frame roll's interpolated
 median error 44.6 h → 0.2 h and right-day frames 7 → 9 of 10; the 22-day roll's median
 interval 50.6 h → 21.8 h; containment and anchors unchanged; oracle unchanged. Details in
-`docs/m5-findings.md`. Next: COO-148 (grayscale second stage), then the signal adapters.
+`docs/m5-findings.md`. COO-148 (grayscale second stage) is done: an anchored frame's
+occasion is re-ranked in `siglip_gray` when every vector is cached (never embeds derivatives),
+moving the exact photo from median rank 10 to 7 inside its event and into the top three for
+12 of 35 instead of 7 — modest, free, and bounded by occasion recall. Next: the signal
+adapters (COO-132 Health GPX, COO-133 Google Timeline, COO-134 calendar, COO-135 email
+receipts, COO-144 Foursquare), COO-136 weather, COO-137 cross-roll, COO-138 incremental cache.
 
 Read `docs/m1-findings.md` before touching retrieval or evaluation. Two things in it will
 otherwise cost you a day:

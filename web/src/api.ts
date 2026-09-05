@@ -85,6 +85,7 @@ export interface Frame {
   interval_text: string;
   candidates: Candidate[];   // the month-wide shortlist verification saw
   possible: Candidate[];     // inside the frame's interval: what it can actually be
+  possible_variant: "siglip" | "siglip_gray";   // anchored frames: the occasion ranked in grayscale for the exact shot, when cached
   anchor: Photo | null;
   verdict: Verdict | null;
   override: Override | null;

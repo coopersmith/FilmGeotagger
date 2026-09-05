@@ -53,7 +53,7 @@ export function Question({ frame, frames, busy, act, onOpenTime }: Props) {
     return (
       <div className="q q--anchored">
         <p className="q__text">
-          Is this the right photo? <span className="muted">Claude says {frame.verdict ? `${frame.verdict.confidence.toFixed(2)}: ` : ""}{frame.verdict?.evidence || "—"}</span>
+          Is this the right photo? <span className="muted">Claude says {frame.verdict ? `${frame.verdict.confidence.toFixed(2)}: ` : ""}{frame.verdict?.evidence || "—"}{frame.possible.length > 1 ? ` If a different shot of the same occasion is the exact one, it is below${frame.possible_variant === "siglip_gray" ? ", ranked in grayscale" : ""}.` : ""}</span>
         </p>
         <div className="q__answers">
           {confirmBtn}

@@ -37,7 +37,9 @@ export function CandidateStrip({ frame, frames, busy, error, onPick, onReject }:
         <span className="eyebrow">{anchored ? "This occasion" : "Possible photos"}</span>
         <span className="muted">
           {anchored
-            ? `the chosen photo and the others from the same occasion, ${fmtShort(frame.t_lo, frame.tzoffset)} – ${fmtClock(frame.t_hi, frame.tzoffset)}`
+            ? `the photos of this occasion, ${fmtShort(frame.t_lo, frame.tzoffset)} – ${fmtClock(frame.t_hi, frame.tzoffset)}, ${
+                frame.possible_variant === "siglip_gray" ? "ranked in grayscale to find the exact shot — form, not colour" : "most similar first"
+              }`
             : `${possible.length ? possible.length : "no"} phone photos between ${fmtShort(frame.t_lo, frame.tzoffset)} and ${fmtShort(frame.t_hi, frame.tzoffset)} (${bounds}), one per occasion, most similar first`}
         </span>
         {busy && <span className="muted">re-solving…</span>}
