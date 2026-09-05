@@ -500,6 +500,7 @@ def write(
     folder: Path = typer.Option(None, help="the scan folder to write into; default: where the roll was aligned from"),
     alias: str = typer.Option(None, "--as", help="the assignments/facts files are named this instead of the roll"),
     dry_run: bool = typer.Option(True, "--dry-run/--write", help="show the plan (default) or run exiftool"),
+    force: bool = typer.Option(False, help="write frames the sidecar says are already written as they stand"),
     yes: bool = typer.Option(False, "--yes", "-y", help="write without asking"),
 ) -> None:
     """Write the confirmed frames' dates, offsets, GPS and keywords into the scan files.
@@ -507,7 +508,10 @@ def write(
     Only frames confirmed in the review UI are written; exiftool keeps `<name>_original` beside
     each file it touches. The argfile it runs is saved under `.filmgeo/writes/` either way.
     """
-    from filmgeo.write import exiftool as w, ops
+    from filmgeo.align.overrides import RollOverrides
+    from filmgeo.align.pipeline import load_verdicts
+    from filmgeo.signals.user_facts import RollFacts
+    from filmgeo.write import exiftool as w, ops, sidecar
 
     key, _ = _roll_key(roll)
     if alias:
@@ -515,9 +519,13 @@ def write(
     try:
         a = w.load_assignments(key)
         target = folder or (Path(roll) if Path(roll).expanduser().is_dir() else None)
+        if target is None and Path(str(a.get("origin") or "")).expanduser().is_dir():
+            target = Path(a["origin"]).expanduser()
         files = w.scan_files(target) if target else None
         current = w.current_tags(files) if files else None
-        p = w.plan(key, target, a, files=files, current=current)
+        written = sidecar.written_frames(target) if target else None
+        facts = RollFacts.load(key)
+        p = w.plan(key, target, a, facts, files=files, current=current, written=written, force=force)
     except w.WriteError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(2)
@@ -540,14 +548,17 @@ def write(
     argfile = w.save_argfile(p)
     console.print(f"argfile: {argfile}" + (f"  · keywords: {', '.join(k for k in p.frames[0].keywords if not k.startswith(w.PROVENANCE_PREFIX))}" if p.frames else ""))
     if not p.frames:
-        console.print("[yellow]nothing to write[/] — confirm frames in the review UI first")
+        unchanged = sum(s.why == "unchanged" for s in p.skipped)
+        console.print("[green]nothing to write[/] — every confirmed frame is already written as it stands (--force to write anyway)" if unchanged
+                      else "[yellow]nothing to write[/] — confirm frames in the review UI first")
         return
     if dry_run:
         console.print("dry run; add [bold]--write[/] to run exiftool")
         return
     if not yes and not typer.confirm(f"Write {len(p.frames)} files in {p.folder}? Originals are copied to {p.folder / ops.BACKUP_DIR} first"):
         raise typer.Exit(0)
-    res = ops.write_roll(p)
+    verdicts = {n: v.__dict__ for n, v in load_verdicts(key).items()}
+    res = ops.write_roll(p, assignments=a, verdicts=verdicts, facts=facts, overrides=RollOverrides.load(key))
     for line in res.warnings:
         console.print(f"[yellow]exiftool:[/] {line}")
     vt = Table(title=f"read back: {sum(c.ok for c in res.checks)} of {len(res.checks)} verified")
@@ -556,7 +567,8 @@ def write(
     for c in res.checks:
         vt.add_row(str(c.number), c.file, "[green]ok[/]" if c.ok else "[red]" + "; ".join(c.problems) + "[/]")
     console.print(vt)
-    console.print(f"backed up {len(res.backed_up)} new originals to {p.folder / ops.BACKUP_DIR} · record {res.record}")
+    console.print(f"backed up {len(res.backed_up)} new originals to {p.folder / ops.BACKUP_DIR} · record {res.record}"
+                  + (f" · sidecar {res.sidecar}" if res.sidecar else ""))
     if not res.ok:
         console.print("[red]some frames did not read back as written[/] — `filmgeo restore` puts the files back")
         raise typer.Exit(1)

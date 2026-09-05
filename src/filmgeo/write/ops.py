@@ -163,14 +163,18 @@ class WriteResult:
     warnings: list[str]
     checks: list[Check]
     record: Path
+    sidecar: Path | None = None
 
     @property
     def ok(self) -> bool:
         return all(c.ok for c in self.checks)
 
 
-def write_roll(p: WritePlan, writes_dir: Path = WRITES_DIR) -> WriteResult:
-    """Backup, clear stale `_original`s, write, read back, record. The order is the safety."""
+def write_roll(p: WritePlan, writes_dir: Path = WRITES_DIR, assignments: dict | None = None,
+               verdicts: dict[int, dict] | None = None, facts=None, overrides=None) -> WriteResult:
+    """Backup, clear stale `_original`s, write, read back, record, sidecar. The order is the safety."""
+    from filmgeo.write import sidecar
+
     if not p.frames:
         raise WriteError("nothing to write: no confirmed frames")
     argfile = save_argfile(p, writes_dir)
@@ -179,7 +183,10 @@ def write_roll(p: WritePlan, writes_dir: Path = WRITES_DIR) -> WriteResult:
     warnings = apply(argfile)
     checks = verify(p)
     rec = record(p, argfile, checks, warnings, writes_dir)
-    return WriteResult(argfile, backed_up, warnings, checks, rec)
+    side = None
+    if assignments is not None and facts is not None:
+        side = sidecar.write(p.folder, p.roll, p, assignments, verdicts or {}, facts, overrides, {c.number: c.ok for c in checks})
+    return WriteResult(argfile, backed_up, warnings, checks, rec, side)
 
 
 # -- restore -----------------------------------------------------------------------------------------
