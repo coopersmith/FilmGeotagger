@@ -113,3 +113,27 @@ def test_user_pin_places_the_frame_and_anchors_interpolation():
     a = sol.assignments
     assert (a[2].location, a[2].location_source, a[2].lat, a[2].lon) == ("ok", "user", 41.01, -71.0)
     assert a[1].location == "ok" and a[1].location_source == "interpolated" and 41.0 < a[1].lat < 41.01
+
+
+def test_offset_dispute_between_anchors_in_different_zones():
+    from filmgeo.align.solve import Assignment
+    from filmgeo.geo import place
+
+    t0 = datetime(2026, 7, 14, 10, tzinfo=timezone.utc)
+    mk = lambda i, t, src="interpolated", off=None, lat=None, lon=None: Assignment(i, 0, src, t, t - timedelta(hours=6), t + timedelta(hours=6), 0.5, 0.0,
+                                                                                    tzoffset=off, lat=lat, lon=lon)
+    # Anchored in New York (-4 h), then anchored in Lisbon (+1 h) two days later; two frames between.
+    sol = Solution([0] * 4, np.zeros((4, 1)), 0.0, [
+        mk(0, t0, "anchored", -14400, 40.7, -74.0), mk(1, t0 + timedelta(hours=20)), mk(2, t0 + timedelta(hours=40)),
+        mk(3, t0 + timedelta(days=2), "anchored", 3600, 38.7, -9.1),
+    ])
+    trail = [TrailPoint(t0 + timedelta(hours=18), 40.7, -74.0, "photos", tzoffset=-14400), TrailPoint(t0 + timedelta(hours=44), 38.7, -9.1, "photos", tzoffset=3600)]
+    place(sol, trail)
+    a = sol.assignments
+    assert a[1].offset_disputed and a[1].offsets == [-14400, 3600] and a[1].tzoffset == -14400   # nearest trail point wins, both offered
+    assert a[2].offset_disputed and a[2].offsets == [-14400, 3600] and a[2].tzoffset == 3600
+    assert not a[0].offset_disputed and a[0].offsets == [] and not a[3].offset_disputed
+    # Same zone on both sides: no dispute from the anchors.
+    sol2 = Solution([0] * 3, np.zeros((3, 1)), 0.0, [mk(0, t0, "anchored", -14400, 40.7, -74.0), mk(1, t0 + timedelta(hours=5)), mk(2, t0 + timedelta(hours=10), "anchored", -14400, 40.7, -74.0)])
+    place(sol2, trail[:1])
+    assert not sol2.assignments[1].offset_disputed and sol2.assignments[1].offsets == []      # no trail inside its interval, anchors agree

@@ -433,6 +433,7 @@ def to_json(r: RollRun) -> dict:
                 "time": t(a.time),
                 "tzoffset": a.tzoffset,
                 "offset_disputed": a.offset_disputed,
+                "offsets": a.offsets,
                 "t_lo": t(a.t_lo),
                 "t_hi": t(a.t_hi),
                 "confidence": round(a.confidence, 4),

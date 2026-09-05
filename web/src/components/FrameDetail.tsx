@@ -65,10 +65,10 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
         {assign.isPending && <span className="muted">re-solving…</span>}
         {assign.error && <span className="error">{(assign.error as Error).message}</span>}
 
-        <details className="fold" open={timeOpen || !!frame.fact?.when} onToggle={(e) => setTimeOpen((e.target as HTMLDetailsElement).open)}>
+        <details className="fold" open={timeOpen || !!frame.fact?.when || frame.offset_disputed} onToggle={(e) => setTimeOpen((e.target as HTMLDetailsElement).open)}>
           <summary>
             <span className="eyebrow">Time and offset</span>
-            <span className="muted"> — edit by hand{frame.fact?.when ? ` · fact: ${frame.fact.when}` : ""}</span>
+            <span className="muted"> — edit by hand{frame.fact?.when ? ` · fact: ${frame.fact.when}` : ""}{frame.offset_disputed ? " · offset in dispute" : ""}</span>
           </summary>
           <TimeEditor rollKey={rollKey} frame={frame} />
         </details>

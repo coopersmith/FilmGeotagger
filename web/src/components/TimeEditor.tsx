@@ -40,6 +40,11 @@ export function TimeEditor({ rollKey, frame }: { rollKey: string; frame: Frame }
           ))}
         </select>
       </label>
+      {frame.offset_disputed && frame.offsets && frame.offsets.length > 1 && (
+        <p className="time__dispute">
+          The roll crosses a zone change here: {frame.offsets.map((o) => `UTC${fmtOffset(o)}`).join(" or ")}. The nearest trail point says {fmtOffset(frame.tzoffset)}; pick the other if you know better.
+        </p>
+      )}
       <div className="time__actions">
         <button className="btn" type="submit" disabled={!dirty || assign.isPending}>
           {assign.isPending ? "solving…" : "set time"}

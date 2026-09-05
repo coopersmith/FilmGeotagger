@@ -332,3 +332,5 @@ a { color: var(--safelight); }
 .report__list .ok { color: var(--ok); }
 .writep__restore { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; padding-top: 6px; border-top: 1px solid var(--line); }
 .next--write { border-left-color: var(--ok); }
+
+.time__dispute { grid-column: 1 / -1; margin: 0; padding: 8px 10px; border-left: 2px solid var(--low); background: rgba(209, 101, 90, 0.08); font-size: 12.5px; }

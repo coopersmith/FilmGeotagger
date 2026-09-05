@@ -67,6 +67,7 @@ export interface Frame {
   time: string;
   tzoffset: number | null;
   offset_disputed: boolean;
+  offsets: number[];        // the distinct offsets in play when disputed
   t_lo: string;
   t_hi: string;
   confidence: number;

@@ -519,6 +519,51 @@ def align(
 
 
 @app.command()
+def embed(
+    from_: str = typer.Option(None, "--from", help="start of the window (YYYY-MM-DD); default: the newest photo already embedded"),
+    to: str = typer.Option(None, "--to", help="end of the window (YYYY-MM-DD); default: today"),
+    variant: str = typer.Option("siglip", help="siglip | siglip_gray | dinov2"),
+    dry_run: bool = typer.Option(False, help="count what would be embedded and stop"),
+) -> None:
+    """Embed the phone photos a window needs and nothing already cached — the incremental cache (COO-138).
+
+    Photos derivatives are unreadable from tool-call shells: run this from Terminal.app. With no
+    options it embeds everything newer than the newest photo the cache already holds, which is
+    what a new batch of rolls needs after `filmgeo index`.
+    """
+    import time
+    from datetime import datetime, timedelta
+
+    from filmgeo.embed.cache import VectorCache, embed_cached
+    from filmgeo.photos import library
+
+    assets = library.load()
+    cache = VectorCache(variant)
+    by_uuid = {a.uuid: a for a in assets}
+    if from_:
+        lo = datetime.fromisoformat(from_).astimezone()
+    else:
+        cached_dates = [by_uuid[k].date for k in cache.keys if k in by_uuid]
+        lo = max(cached_dates) - timedelta(days=1) if cached_dates else min(a.date for a in assets)
+    hi = datetime.fromisoformat(to).astimezone() + timedelta(days=1) if to else datetime.now().astimezone()
+    pool = library.candidates(assets, lo, hi)
+    missing = cache.missing([a.uuid for a in pool])
+    console.print(f"{variant}: {len(pool)} candidate photos {lo:%Y-%m-%d} .. {hi:%Y-%m-%d}, [bold]{len(missing)}[/] not yet embedded "
+                  f"({len(cache.keys)} cached in all)")
+    if not missing or dry_run:
+        return
+    _require_readable(by_uuid[missing[0]].derivative)
+    from filmgeo.embed import models
+
+    name, gray = {"siglip": ("SigLIP", False), "siglip_gray": ("SigLIP", True), "dinov2": ("DINOv2", False)}[variant]
+    embedder = getattr(models, name)(grayscale=gray)
+    t0 = time.time()
+    with console.status(f"embedding {len(missing)} photos..."):
+        embed_cached(embedder, missing, [by_uuid[u].derivative for u in missing], variant)
+    console.print(f"embedded {len(missing)} in {time.time() - t0:.0f}s -> {VectorCache(variant).dir}")
+
+
+@app.command()
 def write(
     roll: str = typer.Argument(..., help="roll key (the assignments file name), e.g. 00007044 or a scan folder"),
     folder: Path = typer.Option(None, help="the scan folder to write into; default: where the roll was aligned from"),

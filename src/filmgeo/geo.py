@@ -115,6 +115,7 @@ def place(solution: Solution, trail_points: list[TrailPoint], pins: dict[int, tu
         if 0 <= i < len(frames):
             frames[i].lat, frames[i].lon = lat, lon
     anchored = [i for i, a in enumerate(frames) if (a.source in ("anchored", "locked") and a.lat is not None) or i in pins]
+    anchored_all = [i for i, a in enumerate(frames) if a.source in ("anchored", "locked")]
 
     for i, a in enumerate(frames):
         # -- location --------------------------------------------------------------------
@@ -151,7 +152,15 @@ def place(solution: Solution, trail_points: list[TrailPoint], pins: dict[int, tu
         if a.source in ("anchored", "locked") and a.tzoffset is not None:
             continue
         offsets = {p.tzoffset for p in trail.within(a.t_lo, a.t_hi) if p.tzoffset is not None}
+        # A roll that crosses a zone change: the anchored frames either side carry different
+        # offsets, and every frame between them is in dispute even if the trail is thin there.
+        prev_a = next((frames[k] for k in reversed(anchored_all) if k < i), None)
+        next_a = next((frames[k] for k in anchored_all if k > i), None)
+        if prev_a is not None and next_a is not None and prev_a.tzoffset is not None and next_a.tzoffset is not None \
+                and prev_a.tzoffset != next_a.tzoffset:
+            offsets |= {prev_a.tzoffset, next_a.tzoffset}
         a.offset_disputed = len(offsets) > 1
+        a.offsets = sorted(offsets)
         p = trail.nearest(a.time, need_offset=True)
         a.tzoffset = p.tzoffset if p else None
     return solution
