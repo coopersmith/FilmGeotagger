@@ -94,3 +94,24 @@ click cheaper when the occasion is right.
 
 The UI says which ranking it is showing ("ranked in grayscale to find the exact shot — form,
 not colour") and the question for an anchored frame points down to it.
+
+## COO-132 — Apple Health workout routes
+
+Landed 5 September 2026. `signals/health_routes.py`, `PhotosTrail.offset_at`, wired into
+`trail_for` and `filmgeo signals`; 97 tests.
+
+A Health export's `workout-routes/*.gpx` files are the only thing in that export that locates
+the user: one track point a second, in UTC, for every walk or ride that recorded a route. The
+adapter opens only the files whose name-date falls inside the window (±1 day), subsamples to a
+point a minute, borrows the UTC offset from the nearest phone photo *by instant* (a new
+`PhotosTrail.offset_at`; the NFC log borrows by wall clock because its times have no zone), and
+emits `health` trail points labelled with the route's name. No constraints.
+
+Drop the export folder, or just `workout-routes/`, under `.filmgeo/signals/health/` and every
+roll picks it up; `filmgeo signals <roll>` reports how many routes lie in the window, or says
+where to put them. Not measured on a real export — none is on this Mac — but this is the case
+the trail has been blind to: a walk with the film camera and no phone photo left the frames in
+a gap with an unknown place; a route puts a point every minute along it.
+
+Also on this Mac, in `~/Downloads`: a Foursquare/Swarm data export (`checkins*.json`). That is
+COO-144's input and the next adapter.

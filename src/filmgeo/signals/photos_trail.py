@@ -31,6 +31,21 @@ class PhotosTrail:
     def constraints(self) -> list[Constraint]:
         return []
 
+    def offset_at(self, instant: datetime, within: timedelta = timedelta(days=3)) -> int | None:
+        """UTC offset in force at a tz-aware instant, from the nearest phone photo by instant.
+
+        For sources that know the instant but not the zone (Health routes are in UTC). None if
+        no photo with an offset sits within `within`.
+        """
+        best, best_gap = None, within
+        for a in self.assets:
+            if a.is_scan or a.tzoffset is None:
+                continue
+            gap = abs(a.date - instant)
+            if gap < best_gap:
+                best, best_gap = a, gap
+        return best.tzoffset if best else None
+
     def offset_for(self, naive_local: datetime, lat: float | None = None, lon: float | None = None,
                    within: timedelta = timedelta(days=3)) -> int | None:
         """UTC offset in force at a wall-clock instant, read off the nearest phone photo.
