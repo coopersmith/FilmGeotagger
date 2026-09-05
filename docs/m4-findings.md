@@ -51,3 +51,37 @@ A folder copy before the first write, read-back verification against the trusted
 (`ExifIFD:DateTimeOriginal`, `OffsetTimeOriginal`, `XMP-photoshop:DateCreated` — never
 `XMP-exif:DateTimeOriginal`, which Lightroom strips), `restore` and `clear`, and a record of
 what was written are COO-128; the sidecar is COO-129; the UI is COO-130.
+
+## COO-128 — backup, read-back verify, record, restore, clear
+
+Landed 5 September 2026. `write/ops.py`; `filmgeo write --write` now runs backup → write →
+verify → record; `filmgeo restore <folder>` and `filmgeo clear <folder> [--all]`; one
+full-cycle test on real exiftool (87 in the suite).
+
+### The order is the safety
+
+`write_roll`: save the argfile, copy every planned scan into `<folder>/.filmgeo_backup/`
+(never overwriting a copy already there — the backup is the pristine lab scan however often
+the roll is re-written), drop stale `<name>_original` files that would make exiftool refuse,
+run the argfile, read everything back with `-j -n -G1`, and append the run to
+`.filmgeo/writes/<roll>.json` with per-frame values and whether each verified.
+
+Verification compares the keys the engine trusts — `ExifIFD:DateTimeOriginal`,
+`OffsetTimeOriginal`, `XMP-photoshop:DateCreated`, GPS in both conventions, Make/Model —
+and that every keyword is present exactly once in both `XMP-dc:Subject` and `IPTC:Keywords`.
+It does not look at `XMP-exif:DateTimeOriginal` or `FileModifyDate` (Lightroom strips one and
+resets the other, M0), so a roll that has been through Lightroom still verifies. A CLI write
+whose read-back fails exits 1 and names `filmgeo restore`.
+
+### Which copy is the original
+
+The first version restored from exiftool's `_original` when one existed and the backup
+otherwise. Wrong way round: `_original` is the file as it was before the *last* write, so
+after a re-write or a `clear` it is itself a written file, and restoring from it would
+"restore" filmgeo's own tags. The backup folder holds the lab scan and wins; `_original` is
+the fallback for a file that was never backed up. Restore also removes the stale `_original`
+so the next write starts clean.
+
+`clear` reads each file's `filmgeo:` keywords and removes them by value (the user's
+descriptive keywords stay); `--all` also blanks the written dates, offsets, GPS and
+Make/Model. It writes through the same argfile path, so it, too, leaves the backup alone.
