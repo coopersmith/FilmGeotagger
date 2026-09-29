@@ -438,9 +438,16 @@ def build_emissions(
                 skipped.add(i)
             if c.has_place:
                 radius = c.radius_m or params.place_radius_m
-                for j, s in enumerate(states):
-                    if s.has_location and haversine_m((c.lat, c.lon), (s.lat, s.lon)) > radius:
-                        em[i, j] = NEG
+                far = [j for j, s in enumerate(states)
+                       if s.has_location and haversine_m((c.lat, c.lon), (s.lat, s.lon)) > radius]
+                # The user's time and place both stand. A five-minute stop at the beach inside a
+                # morning of phone photos at home falls in an event whose centroid is home; if the
+                # place would leave the frame no state at all, the place yields here (geo.place
+                # still puts the frame at the user's pin) rather than the solve failing.
+                keep = em[i].copy()
+                em[i, far] = NEG
+                if not np.isfinite(em[i]).any():
+                    em[i] = keep
     # A skipped frame carries no evidence: uniform over whatever is still allowed.
     for i in skipped:
         allowed = np.isfinite(em[i])

@@ -326,3 +326,19 @@ def test_same_day_matrix_reads_day_ranges():
     assert all(s.t_lo.date() == (s.t_hi - timedelta(seconds=1)).date() for s in gaps)
     assert all(sd[j, k] for j in model.outside for k in range(len(model.states)))
     assert idx  # labels are unique enough to build
+
+
+def test_a_dated_place_fact_inside_an_event_elsewhere_still_solves():
+    # The user was at the beach for five minutes at 10:00 on day 2; the phone's photos that
+    # morning (event 0, 09-11) were all at home, 20 km away. Time and place are both the
+    # user's facts: the frame sits at 10:00 and the solve does not fail.
+    c = Constraint("frame", "user", frame=1, t_lo=at(2, 10), t_hi=at(2, 10, 1), lat=41.2, lon=-71.2, radius_m=300)
+    sol = solve(build_model(WINDOW, EVENTS, 3, [anchor(2, 2, 16, 1)], constraints=[c]))
+    a = sol.assignments
+    assert at(2, 10) <= a[0].time < at(2, 10, 1) and a[2].source == "anchored"
+    # With no time fact the place still excludes far events, as before.
+    c2 = Constraint("frame", "user", frame=1, lat=42.0, lon=-70.0, radius_m=300)
+    m = build_model(WINDOW, EVENTS, 1, constraints=[c2])
+    e0 = next(j for j, s in enumerate(m.states) if s.kind == "event" and s.event == 0)
+    e2 = next(j for j, s in enumerate(m.states) if s.kind == "event" and s.event == 2)
+    assert m.emissions[0, e0] == -np.inf and np.isfinite(m.emissions[0, e2])
