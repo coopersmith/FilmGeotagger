@@ -703,6 +703,17 @@ def serve(
     for roll in rolls or []:
         key, _ = _roll_key(roll)
         origins[key] = roll
+    from filmgeo.signals import swarm, timeline
+    from filmgeo.signals.health_routes import HEALTH_DIR
+    from filmgeo.signals.nfc_log import CACHE as NFC_CACHE
+
+    for label, present, hint in (
+        ("Swarm check-ins and visits", swarm.SWARM_DIR.is_dir(), f"copy the data export into {swarm.SWARM_DIR}"),
+        ("NFC camera log", NFC_CACHE.exists(), "run `filmgeo signals <roll> --refresh-nfc` once"),
+        ("Google Timeline", timeline.TIMELINE_DIR.is_dir(), f"copy Timeline.json into {timeline.TIMELINE_DIR}"),
+        ("Health workout routes", HEALTH_DIR.is_dir(), f"copy workout-routes/ into {HEALTH_DIR}"),
+    ):
+        console.print(f"  [green]on [/] {label}" if present else f"  [dim]off {label} — {hint}[/]")
     do_serve(Store(origins=origins), host=host, port=port, open_browser=open_browser)
 
 

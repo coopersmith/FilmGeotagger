@@ -6,6 +6,7 @@ import { CandidateStrip } from "./CandidateStrip";
 import { MapPane } from "./MapPane";
 import { FrameFacts } from "./FrameFacts";
 import { PhotoBrowser } from "./PhotoBrowser";
+import { PlacesStrip } from "./PlacesStrip";
 import { Question } from "./Question";
 import { TimeEditor } from "./TimeEditor";
 import { Timeline } from "./Timeline";
@@ -182,6 +183,13 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
       </aside>
 
       {browsingEvent && <PhotoBrowser rollKey={rollKey} frame={frame} event={browsingEvent} busy={assign.isPending} onPick={(uuid) => act({ anchor: uuid })} onClose={() => setBrowsing(null)} />}
+
+      <PlacesStrip
+        rollKey={rollKey}
+        frame={frame}
+        busy={assign.isPending}
+        onUse={(p) => act({ when: p.when, lat: p.lat, lon: p.lon, radius_m: 300, place_name: p.name, note: `${p.kind} ${p.when.slice(0, 16).replace("T", " ")}` })}
+      />
 
       <CandidateStrip frame={frame} frames={frames} busy={assign.isPending} error={assign.error ? (assign.error as Error).message : null} onPick={(uuid) => act({ anchor: uuid })} onReject={(uuid) => act({ reject: [uuid] })} />
     </section>

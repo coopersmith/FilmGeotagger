@@ -84,6 +84,9 @@ export function Question({ frame, frames, busy, act, onOpenTime }: Props) {
         <button className="btn" disabled={busy} onClick={() => document.querySelector(".cands")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           pick a possible photo ↓
         </button>
+        <button className="btn" disabled={busy} onClick={() => document.querySelector(".places")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          pick a place you were ↓
+        </button>
         {prev && (
           <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: prev.number })} title="binds this frame to that day; re-solves">
             same day as frame {prev.number}

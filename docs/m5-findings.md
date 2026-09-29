@@ -276,3 +276,35 @@ fact decides the state and `geo.place` still puts the frame at the user's pin. W
 fact the place excludes far events as before. The deeper cause is that events are built from
 phone photos alone: a visit or check-in somewhere else inside a photo event should split it.
 That belongs with COO-174.
+
+## COO-174 — "use this check-in"
+
+Landed 29 September 2026. `signals/places.py`, two API routes, `PlacesStrip.tsx`, the
+date/same-day replace rule, a signal report at `serve` startup; 113 tests.
+
+On roll `874472` two of ten frames had no matching phone photo and both were dated from Swarm
+— by hand, through the facts file, because a check-in was only a dot on the map. Now:
+
+* **Places** are built from the trail: check-ins, NFC taps and visits (arrival to departure).
+  A check-in within 300 m and 30 minutes of a visit is the same stop and merges into it: the
+  check-in gives the name and the instant, the visit the span. `Home` and `Work` visits are
+  flagged so the list can hide them.
+* **Per frame** (`GET …/frames/{n}/places`): the places between the pinned frames either side —
+  what scan order allows — with distance from the current pin. Under the frame, "Places you
+  were" lists them as cards with **use this check-in**: one click sets the time (the check-in's
+  minute, or a visit's arrival), the pin, a 300 m radius and the place name, locks the frame and
+  re-solves. Home and work are folded behind a link.
+* **By name** (`GET …/places?q=`): "know the place but not the day?" searches the whole window.
+* **A date replaces "same day as"**, and the reverse: frame 7 carried `same_day_as: 6` from an
+  earlier click, which contradicted 5 July and had to be removed by hand.
+* **`filmgeo serve` says what is on**: Swarm, NFC log, Google Timeline, Health routes, each
+  `on` or `off` with where to put the export. The roll header shows the trail's sources. The
+  Swarm adapter had been silently off since it was written.
+
+On the real roll: 183 places in the window (51 at home or work, 68 check-ins). Between frames 6
+and 8 the list offers six, Young Family Farm among them; "beach" finds Grinnell's Beach on
+3 July. Both are the answers that were set by hand.
+
+Not done: splitting a photo event when a visit elsewhere falls inside it (the cause behind
+PR #36's workaround). The place-yields rule covers the case; the split would make the
+timeline honest about it.

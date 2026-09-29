@@ -502,3 +502,52 @@ def test_write_plan_write_verify_and_restore(writable):
     assert all(f["written"] is None for f in r["frames"])
     plan = c.get(f"/api/rolls/{KEY}/write").json()
     assert [x["number"] for x in plan["frames"]] == [1, 5]
+
+
+# -- places ------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def with_places(tmp_path, world):
+    """The synthetic roll with a check-in and a visit on day 5, between the anchors on day 2 and day 9."""
+    class Loader(FakeLoader):
+        def __call__(self, *a, **k):
+            r = super().__call__(*a, **k)
+            extra = [TrailPoint(at(5, 15, 52), 41.5209, -71.1921, "visit", -14400, label="Venue: Little Compton", ref="v1"),
+                     TrailPoint(at(5, 15, 55), 41.5209, -71.1921, "visit", -14400, label="Venue: Little Compton", ref="v1"),
+                     TrailPoint(at(5, 16, 14), 41.5208, -71.1920, "swarm", -14400, label="Young Family Farm", ref="c1"),
+                     TrailPoint(at(12, 9), 41.0, -71.0, "swarm", -14400, label="After The Roll", ref="c2")]
+            r.trail = sorted(r.trail + extra, key=lambda p: p.time)
+            return pipeline.resolve(r)
+    s = Store(data_dir=tmp_path / "data", loader=Loader(world), assets_loader=lambda: list(world["pool"]), origins={KEY: ORIGIN})
+    return TestClient(create_app(s))
+
+
+def test_use_a_checkin_dates_and_places_the_frame(with_places):
+    c = with_places
+    d = c.get(f"/api/rolls/{KEY}/frames/3/places").json()
+    assert [p["name"] for p in d["places"]] == ["Young Family Farm"]              # day 12 is after frame 5's anchor
+    p = d["places"][0]
+    assert p["kind"] == "check-in" and p["when"] == at(5, 16, 14).isoformat() and p["start"] == at(5, 15, 52).isoformat()
+    assert d["from"] == at(2, 9, 20).isoformat() and d["to"] == at(9, 12, 20).isoformat() and d["sources"]["swarm"] == 2
+    # "same day as" first, then the check-in: the date replaces the same-day link instead of clashing with it.
+    c.put(f"/api/rolls/{KEY}/frames/3/assign", json={"same_day_as": 1})
+    f = frames_by_number(c.put(f"/api/rolls/{KEY}/frames/3/assign", json={
+        "when": p["when"], "lat": p["lat"], "lon": p["lon"], "radius_m": 300, "place_name": p["name"]}).json())
+    assert f[3]["fact"]["same_day_as"] is None and f[3]["fact"]["place_name"] == "Young Family Farm" and f[3]["locked"]
+    assert datetime.fromisoformat(f[3]["time"]).astimezone(UTC).strftime("%d %H:%M") == "05 16:14"
+    assert (f[3]["lat"], f[3]["lon"], f[3]["location_source"]) == (41.5208, -71.1920, "user")
+    # Frame 4 can only be from that stop onward; the stop itself is still possible for it.
+    d4 = c.get(f"/api/rolls/{KEY}/frames/4/places").json()
+    assert d4["from"] == f[3]["time"] and [q["name"] for q in d4["places"]] == ["Young Family Farm"]
+    assert c.get(f"/api/rolls/{KEY}/frames/2/places").json()["to"] == f[3]["time"]
+    # ...and "same day as" replaces a date.
+    f = frames_by_number(c.put(f"/api/rolls/{KEY}/frames/3/assign", json={"same_day_as": 1}).json())
+    assert f[3]["fact"]["when"] is None and f[3]["fact"]["same_day_as"] == 1
+
+
+def test_search_places_by_name(with_places):
+    c = with_places
+    assert [p["name"] for p in c.get(f"/api/rolls/{KEY}/places?q=farm").json()] == ["Young Family Farm"]
+    assert [p["name"] for p in c.get(f"/api/rolls/{KEY}/places?q=roll").json()] == ["After The Roll"]
+    assert c.get(f"/api/rolls/{KEY}/places?q=x").status_code == 422
