@@ -24,11 +24,14 @@ function distance(m: number | null | undefined): string {
 /** Places you were, by name: check-ins, camera taps and visits. One click dates and places the frame. */
 export function PlacesStrip({ rollKey, frame, busy, onUse }: Props) {
   const places = usePlaces(rollKey, frame.number, `${frame.time}|${frame.t_lo}|${frame.t_hi}`);
-  const [routine, setRoutine] = useState(false);
+  // Check-ins and camera taps are things the user did on purpose; visits are the phone's own
+  // record of where it stopped, many per day and mostly home. Off until asked for.
+  const [passive, setPassive] = useState(false);
   const [q, setQ] = useState("");
   const found = usePlaceSearch(rollKey, q);
   const all = places.data?.places ?? [];
-  const shown = all.filter((p) => routine || !p.routine);
+  const deliberate = (p: Place) => p.kind !== "visit";
+  const shown = all.filter((p) => passive || deliberate(p));
   const hidden = all.length - shown.length;
   const sources = places.data?.sources ?? {};
   const hasSignals = (sources.swarm ?? 0) + (sources.visit ?? 0) + (sources.nfc ?? 0) > 0;
@@ -57,17 +60,17 @@ export function PlacesStrip({ rollKey, frame, busy, onUse }: Props) {
         <span className="eyebrow">Places you were</span>
         <span className="muted">
           {places.data
-            ? `${shown.length || "none"} between ${fmtShort(places.data.from, tz)} and ${fmtShort(places.data.to, tz)}, where scan order allows this frame`
+            ? `${shown.length || "no"} ${passive ? "check-ins and phone stops" : "check-ins"} between ${fmtShort(places.data.from, tz)} and ${fmtShort(places.data.to, tz)}, where scan order allows this frame`
             : "looking…"}
         </span>
         {hidden > 0 && (
-          <button className="link" onClick={() => setRoutine(true)}>
-            show {hidden} at home or work
+          <button className="link" onClick={() => setPassive(true)} title="stops your phone recorded on its own, including home and work">
+            also show {hidden} places your phone stopped
           </button>
         )}
-        {routine && (
-          <button className="link" onClick={() => setRoutine(false)}>
-            hide home and work
+        {passive && (
+          <button className="link" onClick={() => setPassive(false)}>
+            check-ins only
           </button>
         )}
       </div>
@@ -79,7 +82,7 @@ export function PlacesStrip({ rollKey, frame, busy, onUse }: Props) {
         <input value={q} placeholder="know the place but not the day? search by name" onChange={(e) => setQ(e.target.value)} />
         {q.trim().length >= 2 && found.data && found.data.length === 0 && <span className="muted">nothing by that name in this roll's window</span>}
       </div>
-      {q.trim().length >= 2 && found.data && found.data.length > 0 && <ol className="places__list">{found.data.map(card)}</ol>}
+      {q.trim().length >= 2 && found.data && found.data.length > 0 && <ol className="places__list">{found.data.filter((p) => passive || deliberate(p)).map(card)}</ol>}
     </div>
   );
 }
