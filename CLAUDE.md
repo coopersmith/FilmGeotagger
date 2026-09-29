@@ -75,8 +75,12 @@ otherwise), and the store adopts a sidecar's facts/overrides when a roll's cache
 The API carries `written` per frame (with `changed`) and `writable`/`written` per roll.
 COO-130 is done: `GET/POST …/write` and `POST …/restore` in the API, a write panel in the
 UI (plan table, unconfirmed and force toggles, one button, read-back report, restore), ◆/◇
-written badges, and the guide's fifth step. COO-131 — a fresh roll end to end from a real
-scan folder into Photos and Lightroom — is the user's to run; commands are on the issue.
+written badges, and the guide's fifth step. COO-131 is done: roll `874466` (37 frames) went
+embed → verify ($2.59) → align → review → write (37/37 verified) → Apple Photos with placement,
+pins, keywords and local times all correct. **M4 is complete.** Out of that run, provenance
+keywords (`filmgeo:*`) are opt-in (`config.PROVENANCE_KEYWORDS`, `write --provenance`); source
+and confidence live in the sidecar. Always restart `filmgeo serve` after pulling or
+rebuilding: a stale server was the run's most confusing failure.
 
 M5 has started with COO-147: Claude's outing groups are a *joint day* constraint
 (`AlignParams.outing_day_penalty`, gap states cut at midnight so the pairwise form is exact).
@@ -196,6 +200,7 @@ vectors cost GPU time. `reports/` holds generated contact sheets.
 - Anything that spends money on the API says so before running.
 - Keywords written into scans follow the user's own hand-tagging convention: plain and unprefixed
   (`Film`, `Mamiya 7II`, `Kodak Portra 400`, `Richard Photo Lab`). The `filmgeo:` prefix is
-  reserved for machine provenance, and is what `clear` removes.
+  reserved for machine provenance, is off by default, and is what `clear` removes.
+- When giving the user a command for a roll, use the roll's real path, never a placeholder.
 - The user shoots a Contax T2, a Leica M7 (35 mm) and a Mamiya 7II (120, 6×7). Frame count
   identifies the format: 10 frames is a full 6×7 roll, not a partial 35 mm one.

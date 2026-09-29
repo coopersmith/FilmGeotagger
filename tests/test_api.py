@@ -470,7 +470,7 @@ def test_write_plan_write_verify_and_restore(writable):
     plan = c.get(f"/api/rolls/{KEY}/write").json()
     assert [f["number"] for f in plan["frames"]] == [1, 5] and plan["frames"][0]["current"] is None
     assert plan["frames"][0]["local"] == "2026:04:02 05:20:00" and plan["frames"][0]["offset"] == "-04:00"
-    assert plan["frames"][0]["provenance"] == ["filmgeo:anchored", "filmgeo:conf:high"]
+    assert plan["frames"][0]["provenance"] == [] and plan["frames"][0]["source"] == "anchored"    # opt-in; off by default
 
     res = c.post(f"/api/rolls/{KEY}/write").json()
     assert res["ok"] and [ (k["number"], k["ok"]) for k in res["checks"]] == [(1, True), (5, True)] and res["backed_up"] == 2

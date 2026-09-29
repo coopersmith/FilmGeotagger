@@ -144,3 +144,39 @@ Verified in the browser on the synthetic roll with a scratch scan folder: plan o
 5 of 5 verified with backups and sidecar, badges flip to written, the next plan is all
 "unchanged", a one-frame change flips its badge and yields a one-frame plan, restore puts the
 files back and clears the written state.
+
+## COO-131 — a fresh roll, end to end
+
+Run 5 and 29 September 2026 by the user on `874466`: 37 frames, Contax T2, Kodak Portra 400,
+Richard Photo Lab, window 10 June – 4 July, a lab folder never tagged before.
+
+| step | result |
+|---|---|
+| `filmgeo embed` | 7,014 photos since 25 May in 526 s |
+| `filmgeo verify` | 37 frames, $2.59; Claude matched 29 |
+| `filmgeo align` | 22 anchored; the rest between neighbours |
+| review | 8 "same day as" facts, 37 confirmed |
+| write (from the UI) | 37 of 37 verified on read-back, no exiftool warnings, 37 backups, sidecar |
+| files read independently | dates in scan order 13 June → 3 July, offset -04:00, GPS on 33 (frames 1, 2, 3, 36 none), Make/Model set |
+| Apple Photos | timeline placement, map pins, keywords and local times all correct |
+
+Lightroom was not re-checked: M0 proved it reads this tag set from this lab's files, and
+Photos is the stricter reader.
+
+### What the run changed
+
+* **Provenance keywords are now opt-in.** `filmgeo:interpolated` and `filmgeo:conf:high` showed
+  up in Photos' keyword list beside `Film` and `Contax T2`, and the user did not want them
+  there. Source and confidence already live in the sidecar, so `config.PROVENANCE_KEYWORDS`
+  defaults to off (`filmgeo write --provenance` or `FILMGEO_PROVENANCE=1` writes them), and a
+  write without them removes any an earlier write left. The plan table shows source and
+  confidence directly instead.
+* **A stale server is the most confusing failure there is.** Twice the page ran against a
+  `filmgeo serve` started before the code it needed: once a black screen, once "same day as"
+  silently doing nothing and the write panel claiming the roll came from the Photos library.
+  The page now says when the server is older than it is; the write panel's message should
+  say the same rather than guess (COO-151).
+* The placeholder path in instructions (`~/scans/roll-x`) got pasted as-is. Instructions for a
+  specific roll should carry the real path.
+
+**M4 is complete.**

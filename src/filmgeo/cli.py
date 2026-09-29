@@ -570,6 +570,7 @@ def write(
     alias: str = typer.Option(None, "--as", help="the assignments/facts files are named this instead of the roll"),
     dry_run: bool = typer.Option(True, "--dry-run/--write", help="show the plan (default) or run exiftool"),
     force: bool = typer.Option(False, help="write frames the sidecar says are already written as they stand"),
+    provenance: bool = typer.Option(None, "--provenance/--no-provenance", help="also write filmgeo: keywords (how the time was found, how sure); default off"),
     yes: bool = typer.Option(False, "--yes", "-y", help="write without asking"),
 ) -> None:
     """Write the confirmed frames' dates, offsets, GPS and keywords into the scan files.
@@ -594,13 +595,13 @@ def write(
         current = w.current_tags(files) if files else None
         written = sidecar.written_frames(target) if target else None
         facts = RollFacts.load(key)
-        p = w.plan(key, target, a, facts, files=files, current=current, written=written, force=force)
+        p = w.plan(key, target, a, facts, files=files, current=current, written=written, force=force, provenance_keywords=provenance)
     except w.WriteError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(2)
 
     table = Table(title=f"{key}: {len(p.frames)} of {p.n_total} frames to write -> {p.folder}")
-    for col in ("#", "file", "now", "new local time", "offset", "GPS", "keywords", "action"):
+    for col in ("#", "file", "now", "new local time", "offset", "GPS", "source", "action"):
         table.add_column(col)
     rows = {f.number: f for f in p.frames}
     skips = {s.number: s for s in p.skipped}
@@ -608,7 +609,7 @@ def write(
         if n in rows:
             f = rows[n]
             gps = f"{f.lat:.5f}, {f.lon:.5f}" if f.lat is not None else "[yellow]—[/]"
-            prov = " ".join(k.removeprefix(w.PROVENANCE_PREFIX) for k in f.keywords if k.startswith(w.PROVENANCE_PREFIX))
+            prov = f"{f.source} {f.confidence:.2f}"
             table.add_row(str(n), f.path.name, f.current or "[dim]none[/]", f.local, f.offset, gps, prov, "[green]write[/]")
         else:
             s = skips[n]

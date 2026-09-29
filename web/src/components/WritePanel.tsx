@@ -67,7 +67,7 @@ export function WritePanel({ rollKey, roll, frames, onClose }: Props) {
                 <th>new local time</th>
                 <th>offset</th>
                 <th>GPS</th>
-                <th>provenance</th>
+                <th>how</th>
                 <th></th>
               </tr>
             </thead>
@@ -87,7 +87,7 @@ export function WritePanel({ rollKey, roll, frames, onClose }: Props) {
                           <td className="mono">{row.f.local}</td>
                           <td className="mono">{row.f.offset}</td>
                           <td className="mono">{row.f.lat != null ? `${row.f.lat.toFixed(5)}, ${row.f.lon!.toFixed(5)}` : <span className="muted">none</span>}</td>
-                          <td className="mono">{row.f.provenance.map((k) => k.replace("filmgeo:", "")).join(" ")}</td>
+                          <td className="mono">{row.f.source} {row.f.confidence.toFixed(2)}</td>
                           <td className="ok">write</td>
                         </>
                       ) : (

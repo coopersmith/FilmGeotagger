@@ -53,7 +53,7 @@ def test_local_stamp_renders_in_the_frames_offset():
 
 def test_plan_writes_confirmed_frames_only(roll):
     folder, files, facts = roll
-    p = w.plan("r", folder, ASSIGN, facts, files)
+    p = w.plan("r", folder, ASSIGN, facts, files, provenance_keywords=True)
     assert [f.number for f in p.frames] == [1, 2, 3]
     assert [(s.number, s.why) for s in p.skipped] == [(4, "not confirmed"), (5, "skipped")]
     f1, f2, f3 = p.frames
@@ -67,7 +67,7 @@ def test_plan_writes_confirmed_frames_only(roll):
 
 def test_argfile_has_the_full_tag_set_and_never_overwrites_originals(roll):
     folder, files, facts = roll
-    p = w.plan("r", folder, ASSIGN, facts, files)
+    p = w.plan("r", folder, ASSIGN, facts, files, provenance_keywords=True)
     text = p.argfile_text()
     assert "-overwrite_original" not in text
     assert text.count("-execute") == 2                              # three files, one process
@@ -98,7 +98,7 @@ def test_plan_refuses_a_roll_whose_frames_live_in_photos(roll):
 @pytest.mark.skipif(shutil.which("exiftool") is None, reason="exiftool not installed")
 def test_round_trip_through_exiftool(roll, tmp_path):
     folder, files, facts = roll
-    p = w.plan("r", folder, ASSIGN, facts, files)
+    p = w.plan("r", folder, ASSIGN, facts, files, provenance_keywords=True)
     argfile = w.save_argfile(p, tmp_path / "writes")
     warnings = w.apply(argfile)
     assert warnings == [], warnings
@@ -122,7 +122,7 @@ def test_round_trip_through_exiftool(roll, tmp_path):
     cur = w.current_tags(files)
     assert cur[1].date == "2026:04:04 10:01:49" and cur[1].provenance == ["filmgeo:anchored", "filmgeo:conf:high"]
     assert cur[4].date is None and cur[4].provenance == []
-    p2 = w.plan("r", folder, {**ASSIGN, "frames": [frame(1, "locked", "confirmed", "2026-04-04T14:01:49+00:00", conf=1.0)]}, facts, files, current=cur)
+    p2 = w.plan("r", folder, {**ASSIGN, "frames": [frame(1, "locked", "confirmed", "2026-04-04T14:01:49+00:00", conf=1.0)]}, facts, files, current=cur, provenance_keywords=True)
     assert "-XMP-dc:Subject-=filmgeo:anchored" in p2.frames[0].args()
     for f in files.values():  # exiftool refuses to overwrite a stale _original
         f.with_name(f.name + "_original").unlink(missing_ok=True)
@@ -143,7 +143,7 @@ def test_full_cycle_backup_write_verify_record_restore_clear(roll, tmp_path):
     folder, files, facts = roll
     sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
     before = {n: sha(p) for n, p in files.items()}
-    p = w.plan("r", folder, ASSIGN, facts, files)
+    p = w.plan("r", folder, ASSIGN, facts, files, provenance_keywords=True)
     res = ops.write_roll(p, tmp_path / "writes")
     assert res.ok and res.warnings == [] and [c.number for c in res.checks] == [1, 2, 3]
     assert sorted(x.name for x in res.backed_up) == [files[n].name for n in (1, 2, 3)]
@@ -199,7 +199,7 @@ def test_sidecar_written_and_only_changed_frames_rewrite(roll, tmp_path):
     ov.frame(3).anchor = "u3"
     ov.frame(1).confirmed = True
     verdicts = {1: {"match": "u", "confidence": 0.9, "evidence": "same sofa", "candidates": ["u"], "clues": {}}}
-    p = w.plan("r", folder, ASSIGN, facts, files)
+    p = w.plan("r", folder, ASSIGN, facts, files, provenance_keywords=True)
     res = ops.write_roll(p, tmp_path / "writes", assignments=ASSIGN, verdicts=verdicts, facts=facts, overrides=ov)
     assert res.ok and res.sidecar == folder / "filmgeo.json"
     side = json.loads(res.sidecar.read_text())
@@ -212,12 +212,12 @@ def test_sidecar_written_and_only_changed_frames_rewrite(roll, tmp_path):
     assert side["overrides"]["3"]["anchor"] == "u3" and side["overrides"]["1"]["confirmed"] is True
 
     # Nothing changed: the next plan writes nothing.
-    p2 = w.plan("r", folder, ASSIGN, facts, files, written=sidecar.written_frames(folder))
+    p2 = w.plan("r", folder, ASSIGN, facts, files, written=sidecar.written_frames(folder), provenance_keywords=True)
     assert p2.frames == [] and [(s.number, s.why) for s in p2.skipped][:3] == [(1, "unchanged"), (2, "unchanged"), (3, "unchanged")]
-    assert len(w.plan("r", folder, ASSIGN, facts, files, written=sidecar.written_frames(folder), force=True).frames) == 3
+    assert len(w.plan("r", folder, ASSIGN, facts, files, written=sidecar.written_frames(folder), force=True, provenance_keywords=True).frames) == 3
     # Frame 2 moved by an hour: only it is written, and the sidecar keeps frames 1 and 3.
     moved = {**ASSIGN, "frames": [dict(f, time="2026-04-04T11:30:00-04:00") if f["number"] == 2 else f for f in ASSIGN["frames"]]}
-    p3 = w.plan("r", folder, moved, facts, files, written=sidecar.written_frames(folder))
+    p3 = w.plan("r", folder, moved, facts, files, written=sidecar.written_frames(folder), provenance_keywords=True)
     assert [f.number for f in p3.frames] == [2]
     res3 = ops.write_roll(p3, tmp_path / "writes", assignments=moved, verdicts=verdicts, facts=facts, overrides=ov)
     side = json.loads(res3.sidecar.read_text())
@@ -231,3 +231,14 @@ def test_sidecar_written_and_only_changed_frames_rewrite(roll, tmp_path):
     assert rf.camera == "Mamiya 7II" and rf.frames[3].when == "2026-04-05"
     assert RollOverrides.load("r", tmp_path / "o").frames[3].anchor == "u3"
     assert sidecar.adopt("r", folder, tmp_path / "f", tmp_path / "o") == []      # never overwrites what exists
+
+
+def test_provenance_keywords_are_opt_in_and_a_plain_write_removes_old_ones(roll):
+    folder, files, facts = roll
+    p = w.plan("r", folder, ASSIGN, facts, files)
+    assert p.frames[0].keywords == ["Film", "Mamiya 7II", "Kodak Portra 400", "Indie Film Lab"]
+    assert not any("filmgeo:" in a for a in p.frames[0].args())
+    cur = {1: w.Current("2026:04:04 10:01:49", ["filmgeo:anchored", "filmgeo:conf:high"])}
+    a = w.plan("r", folder, ASSIGN, facts, files, current=cur).frames[0].args()
+    assert "-XMP-dc:Subject-=filmgeo:anchored" in a and "-IPTC:Keywords-=filmgeo:conf:high" in a
+    assert not any(x.startswith("-XMP-dc:Subject+=filmgeo:") for x in a)
