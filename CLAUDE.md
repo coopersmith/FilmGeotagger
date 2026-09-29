@@ -107,7 +107,14 @@ bonus): nudges toward a record's opinion lose; constraints that remove impossibi
 COO-138 is done: `filmgeo embed` (incremental by uuid: everything newer than the newest
 cached photo, or `--from/--to`, `--variant siglip_gray`, `--dry-run`) replaces
 `scripts/embed_window.py`; frames between anchors in different zones are `offset_disputed`
-with both `offsets` offered in the time editor. Left in M5: COO-134 calendar and COO-135
+with both `offsets` offered in the time editor. COO-174 is done: `signals/places.py` builds named
+places (check-ins merged into their visits) from the trail; `GET …/frames/{n}/places` and
+`…/places?q=`; "Places you were" under each frame with "use this check-in"; a date replaces
+`same_day_as` and vice versa; `serve` reports which signal sources are on. The user's Swarm
+export is installed under `.filmgeo/signals/swarm/`. A time+place fact inside a photo event
+located elsewhere no longer fails the solve (the place yields). Two rolls are written and in
+Photos: `874466` (Contax T2) and `874472` (Mamiya 7II); ten rolls of the same lab order wait
+under `~/Pictures/Scans to move to Harddrive/SH75312_LiskaSmith/`. Left in M5: COO-134 calendar and COO-135
 email receipts (both need geocoding and the user's data; low measured value expected given
 COO-119/136), COO-137 cross-roll (needs a multi-roll batch).
 

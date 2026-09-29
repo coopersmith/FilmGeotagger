@@ -9,6 +9,8 @@ reachable off the machine. Routes live under `/api` so the web build can own `/`
     GET  /api/rolls/{key}/frames/{n}
     GET  /api/rolls/{key}/photos?event=N | ?start=&end=   the pool's photos of one event or an instant range
     GET  /api/rolls/{key}/frames/{n}/trail?pad_minutes=   trail points with GPS inside the frame's interval
+    GET  /api/rolls/{key}/frames/{n}/places         check-ins, taps and visits between the pinned frames either side
+    GET  /api/rolls/{key}/places?q=                 places in the window by name
     PUT  /api/rolls/{key}/frames/{n}/assign         an override or a frame fact; re-solves, returns all frames
     POST /api/rolls/{key}/confirm                   {"confirmed", "frames"?, "min_confidence"?}: batch confirm / unconfirm
     GET  /api/rolls/{key}/facts
@@ -45,6 +47,8 @@ from filmgeo.align.pipeline import RollRun
 from filmgeo.align.report import interval_text
 from filmgeo.api.state import Store
 from filmgeo.api.thumbs import thumbnail
+from filmgeo.events import haversine_m
+from filmgeo.signals import places as places_mod
 from filmgeo.signals.user_facts import FrameFact, RollFacts, parse_period
 
 WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
@@ -281,6 +285,42 @@ def create_app(store: Store | None = None) -> FastAPI:
             for p in r.trail if p.has_location and lo <= p.time <= hi
         ]
 
+    def order_bounds(r: RollRun, i: int) -> tuple[datetime, datetime]:
+        """What scan order allows frame i: from the last pinned frame before it to the first after it."""
+        a = r.solution.assignments
+
+        def pinned(j: int) -> bool:
+            ff = r.facts.frames.get(r.frames[j].number)
+            return a[j].source in ("anchored", "locked") or bool(ff and ff.when)
+
+        lo = next((a[j].time for j in range(i - 1, -1, -1) if pinned(j)), r.window.start)
+        hi = next((a[j].time for j in range(i + 1, len(a)) if pinned(j)), r.window.end)
+        return lo, max(lo, hi)
+
+    def place_json(p, frame=None) -> dict:
+        d = {"name": p.name, "kind": p.kind, "start": _t(p.start), "end": _t(p.end), "when": _t(p.when), "lat": p.lat, "lon": p.lon,
+             "tzoffset": p.tzoffset, "ref": p.ref, "routine": p.routine}
+        if frame is not None:
+            d["inside_interval"] = frame.t_lo <= p.when <= frame.t_hi
+            d["distance_m"] = None if frame.lat is None else round(haversine_m((frame.lat, frame.lon), (p.lat, p.lon)))
+        return d
+
+    @app.get("/api/rolls/{key}/frames/{n}/places")
+    def frame_places(key: str, n: int) -> dict:
+        """Check-ins, taps and visits between the pinned frames either side of this one: where it can have been."""
+        r = run_for(key)
+        i = frame_index(r, n)
+        lo, hi = order_bounds(r, i)
+        found = places_mod.between(places_mod.from_trail(r.trail), lo, hi)
+        return {"from": _t(lo), "to": _t(hi), "sources": r.trail_counts,
+                "places": [place_json(p, r.solution.assignments[i]) for p in found]}
+
+    @app.get("/api/rolls/{key}/places")
+    def roll_places(key: str, q: str = Query(..., min_length=2), limit: int = Query(50, ge=1, le=200)) -> list[dict]:
+        """Places in the roll's window by name: for "I know where, not which day"."""
+        r = run_for(key)
+        return [place_json(p) for p in places_mod.search(places_mod.from_trail(r.trail), q)[:limit]]
+
     @app.put("/api/rolls/{key}/frames/{n}/assign")
     def assign(key: str, n: int, body: AssignBody) -> list[dict]:
         r = run_for(key)
@@ -315,6 +355,10 @@ def create_app(store: Store | None = None) -> FastAPI:
             ff = facts.frame(n)
             if body.when is not None:
                 ff.when = _as_period(body.when, facts)
+                if body.same_day_as is None:
+                    ff.same_day_as = None        # a date replaces "same day as"; the two would only contradict
+            elif body.same_day_as is not None:
+                ff.when = None                   # and the other way round
             if (body.lat is None) != (body.lon is None):
                 raise HTTPException(422, "a place needs both lat and lon")
             if body.lat is not None:

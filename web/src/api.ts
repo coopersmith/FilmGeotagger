@@ -113,6 +113,28 @@ export interface WriteResult {
   frames: Frame[];
 }
 
+export interface Place {
+  name: string;
+  kind: "check-in" | "visit" | "tap";
+  start: string;
+  end: string;
+  when: string;
+  lat: number;
+  lon: number;
+  tzoffset: number | null;
+  ref: string;
+  routine: boolean;
+  inside_interval?: boolean;
+  distance_m?: number | null;
+}
+
+export interface FramePlaces {
+  from: string;
+  to: string;
+  sources: Record<string, number>;
+  places: Place[];
+}
+
 export interface TrailPoint {
   time: string;
   lat: number;
@@ -247,6 +269,20 @@ export const usePhotos = (key: string, event: number | null) =>
     queryKey: ["photos", key, event],
     queryFn: () => request<(Photo & { event: number })[]>(`/api/rolls/${encodeURIComponent(key)}/photos?event=${event}`),
     enabled: event !== null,
+  });
+
+/** Check-ins, taps and visits between the pinned frames either side of this one. */
+export const usePlaces = (key: string, number: number, version: string) =>
+  useQuery({
+    queryKey: ["places", key, number, version],
+    queryFn: () => request<FramePlaces>(`/api/rolls/${encodeURIComponent(key)}/frames/${number}/places`),
+  });
+
+export const usePlaceSearch = (key: string, q: string) =>
+  useQuery({
+    queryKey: ["place-search", key, q],
+    queryFn: () => request<Place[]>(`/api/rolls/${encodeURIComponent(key)}/places?q=${encodeURIComponent(q)}`),
+    enabled: q.trim().length >= 2,
   });
 
 /** Trail points with GPS inside a frame's interval, padded so the map has context. */

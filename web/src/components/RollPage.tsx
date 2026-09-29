@@ -103,6 +103,10 @@ export function RollPage({ rollKey, onBack }: { rollKey: string; onBack: () => v
             <span className="muted">
               {r.n_frames} frames · {r.anchored} anchored · {r.verified_frames} verified · {r.confirmed} confirmed · {r.pool} photos in {r.events.length} events
             </span>
+            <span className="muted" title="what the map and the places list are built from">
+              trail: {Object.entries(r.trail).map(([k, v]) => `${k === "swarm" ? "check-ins" : k === "visit" ? "visits" : k} ${v}`).join(" · ")}
+              {!r.trail.swarm && !r.trail.visit ? " · no check-ins loaded" : ""}
+            </span>
             {r.window_check.doubtful && (
               <span className="pill pill--warn" title={r.window_check.reason}>
                 window doubtful
