@@ -261,3 +261,18 @@ A frame between two anchored frames whose offsets differ — New York then Lisbo
 editor opens itself on such a frame and says "the roll crosses a zone change here: UTC-04:00 or
 UTC+01:00; the nearest trail point says −04:00, pick the other if you know better". Not
 measured: no roll in the ground truth crosses a zone.
+
+## A dated place fact inside an event somewhere else (roll `874472`, 29 September 2026)
+
+Frame 1 was shot at Grinnell's Beach during a five-minute stop (Swarm: check-in 09:17, visit
+09:17–09:22 on 3 July). The phone took photos at home at 08:25 and 09:51, so segmentation
+made 08:25–09:51 one event with its centroid at home, 8 km away. A fact "09:17, at this pin,
+within 300 m" then left frame 1 no state: the time forced the event, the place excluded it,
+and the API answered 409. The user's facts are both true; the event's centroid is the thing
+that is wrong about that minute.
+
+`build_emissions` now lets the place yield when it would leave the frame nothing — the time
+fact decides the state and `geo.place` still puts the frame at the user's pin. With no time
+fact the place excludes far events as before. The deeper cause is that events are built from
+phone photos alone: a visit or check-in somewhere else inside a photo event should split it.
+That belongs with COO-174.
