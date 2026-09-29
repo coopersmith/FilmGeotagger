@@ -15,6 +15,8 @@ Rules that came out of M0 and are load-bearing here:
   silently does nothing on a scan with no EXIF, and the copy would take the Mac's offset.
 * exiftool exits 0 on warnings ("Not an integer", "No writable tags set"), so stderr is kept
   and shown, never discarded.
+* Provenance keywords are opt-in (`config.PROVENANCE_KEYWORDS`); source and confidence always
+  go to the sidecar. A write without them removes any an earlier write left.
 * Keywords follow the user's own convention — plain `Film`, `Mamiya 7II`, `Kodak Portra 400`,
   `Richard Photo Lab` — and the `filmgeo:` prefix is machine provenance only, which is what
   `clear` (COO-128) removes.
@@ -192,7 +194,8 @@ def scan_files(folder: Path) -> dict[int, Path]:
 
 def plan(key: str, folder: Path | None = None, assignments: dict | None = None, facts: RollFacts | None = None,
          files: dict[int, Path] | None = None, current: dict[int, "Current"] | None = None,
-         written: dict[int, dict] | None = None, force: bool = False) -> WritePlan:
+         written: dict[int, dict] | None = None, force: bool = False,
+         provenance_keywords: bool | None = None) -> WritePlan:
     """What would be written for a roll: its confirmed frames, and why the rest are left alone.
 
     `folder` defaults to the assignments' `origin`; a roll whose origin is a hand-tagged key
@@ -201,8 +204,11 @@ def plan(key: str, folder: Path | None = None, assignments: dict | None = None, 
     `written` is the sidecar's record, so a frame already written as it stands is left alone
     unless `force`.
     """
+    from filmgeo import config
     from filmgeo.write import sidecar
 
+    if provenance_keywords is None:
+        provenance_keywords = config.PROVENANCE_KEYWORDS
     a = assignments if assignments is not None else load_assignments(key)
     facts = facts or RollFacts.load(key)
     if folder is None:
@@ -234,7 +240,7 @@ def plan(key: str, folder: Path | None = None, assignments: dict | None = None, 
         fw = FrameWrite(
             number=n, path=path, local=local, offset=offset, instant=instant,
             lat=fr.get("lat") if has_loc else None, lon=fr.get("lon") if has_loc else None,
-            keywords=[*descriptive, *provenance(fr["source"], float(fr.get("confidence", 0.0)), has_loc)],
+            keywords=[*descriptive, *(provenance(fr["source"], float(fr.get("confidence", 0.0)), has_loc) if provenance_keywords else [])],
             make=make, model=model, source=fr["source"], confidence=float(fr.get("confidence", 0.0)),
             anchor_uuid=fr.get("anchor_uuid"), interval=(fr["t_lo"], fr["t_hi"]),
             current=(current or {}).get(n, Current()).date, stale=(current or {}).get(n, Current()).provenance,

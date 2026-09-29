@@ -33,3 +33,9 @@ MAX_PER_EVENT = 1
 # The user's camera bodies (CLAUDE.md). Roll facts warn on any other name rather than refuse,
 # because a new body is not an error — but a typo would split a keyword in the library.
 KNOWN_CAMERAS = ("Contax T2", "Leica M7", "Mamiya 7II")
+
+# Machine provenance keywords (`filmgeo:anchored`, `filmgeo:conf:high`, ...) in the scan files.
+# Off by default since the first end-to-end roll (COO-131): they showed up in Apple Photos'
+# keyword list beside the user's own, and the same facts live in `<roll>/filmgeo.json`.
+# `filmgeo write --provenance` or FILMGEO_PROVENANCE=1 writes them.
+PROVENANCE_KEYWORDS = os.environ.get("FILMGEO_PROVENANCE", "0") in ("1", "true", "yes")
