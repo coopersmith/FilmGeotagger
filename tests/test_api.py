@@ -551,3 +551,17 @@ def test_search_places_by_name(with_places):
     assert [p["name"] for p in c.get(f"/api/rolls/{KEY}/places?q=farm").json()] == ["Young Family Farm"]
     assert [p["name"] for p in c.get(f"/api/rolls/{KEY}/places?q=roll").json()] == ["After The Roll"]
     assert c.get(f"/api/rolls/{KEY}/places?q=x").status_code == 422
+
+
+def test_frame_photos_chronological_by_day_and_event_with_bursts_folded(client):
+    d = client.get(f"/api/rolls/{KEY}/frames/3/photos").json()
+    assert d["from"] == at(2, 9, 20).isoformat() and d["to"] == at(9, 12, 20).isoformat()
+    # Between the anchors inclusive: P01-P03 of day 2's morning, the afternoon event, P08-P09 on day 9.
+    assert [x["day"] for x in d["days"]] == ["2026-04-02", "2026-04-09"] and d["total"] == 9
+    day2 = d["days"][0]
+    assert [e["index"] for e in day2["events"]] == [0, 1] and [e["count"] for e in day2["events"]] == [3, 4]
+    assert d["days"][1]["events"][0]["count"] == 2 and d["days"][1]["events"][0]["photos"][0]["uuid"] == "P08"
+    # Photos twenty minutes apart are not a burst: every one shows.
+    assert [len(p["more"]) for p in day2["events"][1]["photos"]] == [0, 0, 0, 0]
+    assert client.get(f"/api/rolls/{KEY}/frames/3/photos?all_days=true").json()["total"] == 12
+    assert client.get(f"/api/rolls/{KEY}/frames/9/photos").status_code == 404

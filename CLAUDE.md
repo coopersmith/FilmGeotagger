@@ -114,7 +114,11 @@ places (check-ins merged into their visits) from the trail; `GET …/frames/{n}/
 export is installed under `.filmgeo/signals/swarm/`. A time+place fact inside a photo event
 located elsewhere no longer fails the solve (the place yields). Two rolls are written and in
 Photos: `874466` (Contax T2) and `874472` (Mamiya 7II); ten rolls of the same lab order wait
-under `~/Pictures/Scans to move to Harddrive/SH75312_LiskaSmith/`. Left in M5: COO-134 calendar and COO-135
+under `~/Pictures/Scans to move to Harddrive/SH75312_LiskaSmith/`. COO-176 (the unmatched frame: a "Set the date and place" dialog — date-time, zone, coordinates
+or a map link, place name — and a chronological browser of every phone photo between the
+pinned neighbours, by day and event with bursts folded, "this frame was shot here" sets the
+anchor; keys `d` and `p`; `GET …/frames/{n}/photos`) is done, unmeasured on a real roll.
+Left in M5: COO-134 calendar and COO-135
 email receipts (both need geocoding and the user's data; low measured value expected given
 COO-119/136), COO-137 cross-roll (needs a multi-roll batch).
 

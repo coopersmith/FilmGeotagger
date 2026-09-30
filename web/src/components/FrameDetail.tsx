@@ -6,11 +6,15 @@ import { CandidateStrip } from "./CandidateStrip";
 import { MapPane } from "./MapPane";
 import { FrameFacts } from "./FrameFacts";
 import { PhotoBrowser } from "./PhotoBrowser";
+import { PhotoChronology } from "./PhotoChronology";
+import { SetDatePlace } from "./SetDatePlace";
 import { PlacesStrip } from "./PlacesStrip";
 import { Question } from "./Question";
 import { TimeEditor } from "./TimeEditor";
 import { Timeline } from "./Timeline";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { isPinned } from "../review";
+import { isTyping } from "./Keys";
 
 /** The selected frame beside the phone photo it was matched to, and everything known about it. */
 export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKey: string; frame: Frame; frames: Frame[]; roll: Roll; onSelect: (n: number) => void }) {
@@ -18,6 +22,7 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
   const trail = useTrail(rollKey, frame.number, 30);
   const [browsing, setBrowsing] = useState<number | null>(null);
   const [timeOpen, setTimeOpen] = useState(false);
+  const [sheet, setSheet] = useState<"date" | "photos" | null>(null);
   const act = (body: Parameters<typeof assign.mutate>[0]["body"]) => assign.mutate({ number: frame.number, body });
   const browsingEvent = browsing === null ? null : (roll.events.find((e) => e.index === browsing) ?? null);
   const v = frame.verdict;
@@ -27,6 +32,25 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
   const i = frames.findIndex((f) => f.number === frame.number);
   const prev = frames[i - 1];
   const next = frames[i + 1];
+  // The nearest pinned frames either side: what the chronology and the dialog say the frame sits between.
+  const prevPinned = [...frames.slice(0, i)].reverse().find(isPinned);
+  const nextPinned = frames.slice(i + 1).find(isPinned);
+  const errText = assign.error ? (assign.error as Error).message : null;
+
+  // d: set the date and place; p: the photos in time order. Esc is handled by the sheets themselves.
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey || sheet) return;
+      if (e.key === "d") setSheet("date");
+      else if (e.key === "p") setSheet("photos");
+      else return;
+      e.preventDefault();
+    };
+    addEventListener("keydown", on);
+    return () => removeEventListener("keydown", on);
+  }, [sheet]);
+  useEffect(() => setSheet(null), [frame.number]);
+  const actAndClose = (body: Parameters<typeof act>[0]) => assign.mutate({ number: frame.number, body }, { onSuccess: () => setSheet(null) });
 
   return (
     <section className="detail">
@@ -62,7 +86,15 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
       </div>
 
       <div className="detail__facts">
-        <Question frame={frame} frames={frames} busy={assign.isPending} act={(body) => act(body as Parameters<typeof act>[0])} onOpenTime={() => setTimeOpen(true)} />
+        <Question
+          frame={frame}
+          frames={frames}
+          busy={assign.isPending}
+          act={(body) => act(body as Parameters<typeof act>[0])}
+          onOpenTime={() => setTimeOpen(true)}
+          onSetDatePlace={() => setSheet("date")}
+          onBrowsePhotos={() => setSheet("photos")}
+        />
         {assign.isPending && <span className="muted">re-solving…</span>}
         {assign.error && <span className="error">{(assign.error as Error).message}</span>}
 
@@ -182,6 +214,10 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
         />
       </aside>
 
+      {sheet === "date" && <SetDatePlace frame={frame} prev={prevPinned} next={nextPinned} busy={assign.isPending} error={errText} onSave={actAndClose} onClose={() => setSheet(null)} />}
+      {sheet === "photos" && (
+        <PhotoChronology rollKey={rollKey} frame={frame} prev={prevPinned} next={nextPinned} busy={assign.isPending} error={errText} onPick={(uuid) => actAndClose({ anchor: uuid })} onClose={() => setSheet(null)} />
+      )}
       {browsingEvent && <PhotoBrowser rollKey={rollKey} frame={frame} event={browsingEvent} busy={assign.isPending} onPick={(uuid) => act({ anchor: uuid })} onClose={() => setBrowsing(null)} />}
 
       <PlacesStrip

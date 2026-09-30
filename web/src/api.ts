@@ -271,6 +271,34 @@ export const usePhotos = (key: string, event: number | null) =>
     enabled: event !== null,
   });
 
+export interface ChronoPhoto extends Photo {
+  event: number;
+  /** Shots within a minute of this one, folded behind it. */
+  more: ChronoPhoto[];
+}
+export interface ChronoEvent {
+  index: number;
+  start: string;
+  end: string;
+  lat: number | null;
+  lon: number | null;
+  count: number;
+  photos: ChronoPhoto[];
+}
+export interface FramePhotos {
+  from: string;
+  to: string;
+  total: number;
+  days: { day: string; count: number; events: ChronoEvent[] }[];
+}
+
+/** Every phone photo between the pinned frames either side of this one, by day and event, bursts folded. */
+export const useFramePhotos = (key: string, number: number, allDays: boolean) =>
+  useQuery({
+    queryKey: ["frame-photos", key, number, allDays],
+    queryFn: () => request<FramePhotos>(`/api/rolls/${encodeURIComponent(key)}/frames/${number}/photos${allDays ? "?all_days=true" : ""}`),
+  });
+
 /** Check-ins, taps and visits between the pinned frames either side of this one. */
 export const usePlaces = (key: string, number: number, version: string) =>
   useQuery({
@@ -303,6 +331,7 @@ export function useAssign(key: string) {
       qc.invalidateQueries({ queryKey: ["roll", key] });
       qc.invalidateQueries({ queryKey: ["rolls"] });
       qc.invalidateQueries({ queryKey: ["trail", key] });
+      qc.invalidateQueries({ queryKey: ["frame-photos", key] });
     },
   });
 }

@@ -9,6 +9,7 @@ reachable off the machine. Routes live under `/api` so the web build can own `/`
     GET  /api/rolls/{key}/frames/{n}
     GET  /api/rolls/{key}/photos?event=N | ?start=&end=   the pool's photos of one event or an instant range
     GET  /api/rolls/{key}/frames/{n}/trail?pad_minutes=   trail points with GPS inside the frame's interval
+    GET  /api/rolls/{key}/frames/{n}/photos         every phone photo between the pinned frames either side, by day and event, bursts folded
     GET  /api/rolls/{key}/frames/{n}/places         check-ins, taps and visits between the pinned frames either side
     GET  /api/rolls/{key}/places?q=                 places in the window by name
     PUT  /api/rolls/{key}/frames/{n}/assign         an override or a frame fact; re-solves, returns all frames
@@ -33,7 +34,7 @@ from __future__ import annotations
 import dataclasses
 import threading
 import webbrowser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -304,6 +305,48 @@ def create_app(store: Store | None = None) -> FastAPI:
             d["inside_interval"] = frame.t_lo <= p.when <= frame.t_hi
             d["distance_m"] = None if frame.lat is None else round(haversine_m((frame.lat, frame.lon), (p.lat, p.lon)))
         return d
+
+    BURST_SECONDS = 60
+
+    @app.get("/api/rolls/{key}/frames/{n}/photos")
+    def frame_photos(key: str, n: int, all_days: bool = Query(False)) -> dict:
+        """Every phone photo between the pinned frames either side of this one, in time order,
+        grouped by local day and then by event, with bursts (shots within a minute of each other)
+        folded behind their first shot. The chronological view for "this frame was shot here"."""
+        r = run_for(key)
+        i = frame_index(r, n)
+        lo, hi = (r.window.start, r.window.end) if all_days else order_bounds(r, i)
+        days: dict[str, dict] = {}
+        event_by = {e.index: e for e in r.events}
+        for a, e in zip(r.pool, r.event_ids):
+            if not (lo <= a.date <= hi):
+                continue
+            local = a.date.astimezone(timezone(timedelta(seconds=a.tzoffset))) if a.tzoffset is not None else a.date
+            day = local.strftime("%Y-%m-%d")
+            d = days.setdefault(day, {"day": day, "count": 0, "events": {}})
+            ev = d["events"].setdefault(e, {"index": e, "start": _t(event_by[e].start), "end": _t(event_by[e].end), "lat": event_by[e].lat,
+                                            "lon": event_by[e].lon, "count": 0, "photos": []})
+            photo = _photo(a, r) | {"event": e, "more": []}
+            last = ev["photos"][-1] if ev["photos"] else None
+            if last is not None and (a.date - datetime.fromisoformat(last["_last"])).total_seconds() <= BURST_SECONDS:
+                last["more"].append(photo)
+                last["_last"] = _t(a.date)
+            else:
+                photo["_last"] = _t(a.date)
+                ev["photos"].append(photo)
+            ev["count"] += 1
+            d["count"] += 1
+        out_days = []
+        for d in days.values():
+            evs = sorted(d["events"].values(), key=lambda x: x["start"])
+            for ev in evs:
+                for ph in ev["photos"]:
+                    ph.pop("_last", None)
+                    for m in ph["more"]:
+                        m.pop("_last", None)
+            out_days.append({"day": d["day"], "count": d["count"], "events": evs})
+        out_days.sort(key=lambda d: d["day"])
+        return {"from": _t(lo), "to": _t(hi), "total": sum(d["count"] for d in out_days), "days": out_days}
 
     @app.get("/api/rolls/{key}/frames/{n}/places")
     def frame_places(key: str, n: int) -> dict:
