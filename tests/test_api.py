@@ -563,5 +563,6 @@ def test_frame_photos_chronological_by_day_and_event_with_bursts_folded(client):
     assert d["days"][1]["events"][0]["count"] == 2 and d["days"][1]["events"][0]["photos"][0]["uuid"] == "P08"
     # Photos twenty minutes apart are not a burst: every one shows.
     assert [len(p["more"]) for p in day2["events"][1]["photos"]] == [0, 0, 0, 0]
+    assert not any(p["image_missing"] for e in day2["events"] for p in e["photos"])
     assert client.get(f"/api/rolls/{KEY}/frames/3/photos?all_days=true").json()["total"] == 12
     assert client.get(f"/api/rolls/{KEY}/frames/9/photos").status_code == 404
