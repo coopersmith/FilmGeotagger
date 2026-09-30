@@ -120,6 +120,9 @@ pinned neighbours, by day and event with bursts folded, "this frame was shot her
 anchor; keys `d` and `p`; `GET …/frames/{n}/photos`) is done, unmeasured on a real roll.
 `same_time_as` (a frame shot within a minute of a neighbour, in scan order; `SAME_MOMENT`,
 `anchored_moments`; "moments after/before frame N" buttons) joins `same_day_as`.
+The map has distinct markers (labelled red/blue frame pin, grey trail, green check-ins and
+rings), click-a-spot placing, and name search (own places, then Nominatim via
+`GET /api/geocode`); `index.html` is served no-cache.
 Left in M5: COO-134 calendar and COO-135
 email receipts (both need geocoding and the user's data; low measured value expected given
 COO-119/136), COO-137 cross-roll (needs a multi-roll batch).

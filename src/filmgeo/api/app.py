@@ -22,6 +22,7 @@ reachable off the machine. Routes live under `/api` so the web build can own `/`
     POST /api/rolls/{key}/restore                   every scan back from .filmgeo_backup/ (or _original)
     GET  /api/rolls/{key}/frames/{n}/image?size=    small | large
     GET  /api/photos/{uuid}/image?size=
+    GET  /api/geocode?q=                            a place name to coordinates (OpenStreetMap Nominatim; only the query leaves this Mac)
 
 Errors: 404 for an unknown roll, frame or photo; 409 when the solver refuses (a lock that
 contradicts scan order, a fact that leaves no state) — nothing is persisted then; 422 for a
@@ -47,6 +48,7 @@ from filmgeo.align import pipeline
 from filmgeo.align.overrides import RollOverrides
 from filmgeo.align.pipeline import RollRun
 from filmgeo.align.report import interval_text
+from filmgeo.api.geocode import Geocoder
 from filmgeo.api.state import Store
 from filmgeo.api.thumbs import thumbnail
 from filmgeo.events import haversine_m
@@ -208,10 +210,18 @@ def facts_json(facts: RollFacts) -> dict:
 # -- app -----------------------------------------------------------------------------------
 
 
-def create_app(store: Store | None = None) -> FastAPI:
+def create_app(store: Store | None = None, geocoder: Geocoder | None = None) -> FastAPI:
     store = store or Store()
+    geocoder = geocoder or Geocoder()
     app = FastAPI(title="filmgeo", version="0.1")
     app.state.store = store
+
+    @app.get("/api/geocode")
+    def geocode(q: str = Query(..., min_length=2)) -> list[dict]:
+        try:
+            return geocoder.search(q)
+        except OSError as e:
+            raise HTTPException(502, f"place search needs the network: {e}")
 
     def run_for(key: str) -> RollRun:
         try:
@@ -416,7 +426,7 @@ def create_app(store: Store | None = None) -> FastAPI:
             for k in ("radius_m", "place_name", "same_day_as", "same_time_as", "skip", "note"):
                 v = getattr(body, k)
                 if v is not None:
-                    setattr(ff, k, v)
+                    setattr(ff, k, v if v != "" else None)     # an empty name or note clears it
         problems = facts.validate(r.n_frames)
         if problems:
             raise HTTPException(422, "; ".join(problems))
@@ -556,6 +566,17 @@ def create_app(store: Store | None = None) -> FastAPI:
         return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "max-age=31536000, immutable"})
 
     if WEB_DIST.is_dir():
+        # The page must never come from the browser cache — a rebuilt UI would otherwise show
+        # stale after "reload". Its assets are content-hashed and can be kept for ever.
+        @app.middleware("http")
+        async def page_no_cache(request, call_next):
+            resp = await call_next(request)
+            if request.url.path in ("/", "/index.html"):
+                resp.headers["Cache-Control"] = "no-cache"
+            elif request.url.path.startswith("/assets/"):
+                resp.headers["Cache-Control"] = "max-age=31536000, immutable"
+            return resp
+
         app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")
     else:
         @app.get("/", include_in_schema=False)

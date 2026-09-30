@@ -368,3 +368,29 @@ dialog let you *type* the neighbour's time, which is not the same thing as sayin
   as …", both directions always, because before and after are different answers here. A date,
   a day link and a moment link replace one another in `PUT …/assign`. The facts form and
   `filmgeo facts --same-time-as` carry it too; the reverse test flips it.
+
+## The map: markers you can tell apart, and three ways to set a place
+
+"Almost impossible to use" (30 September): the two things wrong were that every marker was
+the same safelight orange — the frame's pin an 18 px teardrop, the trail orange dots, the
+pick-a-cluster rings orange — and that the only ways to set a place were dragging that pin or
+pasting coordinates.
+
+* **The frame** is a large red ringed dot with a label ("frame 04", "frame 04 · yours" and blue
+  once set by hand). Phone photos and routes are small dark-grey dots with a white stroke;
+  check-ins are green with their venue name; ambiguous-place rings and search results are
+  numbered green rings. A legend under the map names them.
+* **Click a spot on the map**: a mode (crosshair, Esc cancels) so an ordinary click never moves
+  anything; one click places the frame and the mode ends.
+* **Search a place by name**: the user's own check-ins and visits first (`…/places?q=`, with
+  their date; OpenStreetMap has never heard of Young Family Farm), then the world through
+  `GET /api/geocode?q=` — Nominatim, key-free, one request a second, identified by
+  User-Agent, cached for the process; only the query leaves the Mac. Hits are numbered rings on
+  the map and a list under the search box; either places the frame with the name as its place
+  fact.
+* Placing by click, drag or pasted coordinates clears a stale place name (an empty
+  `place_name` in `PUT …/assign` now clears the fact).
+* Two things learned on the way: the browser had cached `index.html`, so "reload" showed the
+  old UI — the page is now `Cache-Control: no-cache` (hashed assets immutable); and in a hidden
+  browser pane `requestAnimationFrame` never fires, so MapLibre's animated `fitBounds` never
+  lands — the fit is instant when `document.hidden`.

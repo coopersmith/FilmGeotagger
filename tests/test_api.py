@@ -581,3 +581,27 @@ def test_same_moment_as_a_neighbour_locks_the_frame_beside_it(client):
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"when": at(2, 14, 5).isoformat()}).json())
     assert f[3]["fact"]["same_time_as"] is None and f[3]["fact"]["when"]
     assert client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"same_time_as": 4}).status_code == 422
+
+
+def test_geocode_proxies_and_caches(store):
+    from filmgeo.api.geocode import Geocoder
+
+    calls = []
+
+    def fake(q):
+        calls.append(q)
+        return [{"display_name": "Young Family Farm, Little Compton", "lat": "41.5209", "lon": "-71.1921", "type": "farm"}]
+
+    c = TestClient(create_app(store, geocoder=Geocoder(fake, min_interval=0)))
+    r = c.get("/api/geocode?q=Young Family Farm").json()
+    assert r == [{"name": "Young Family Farm, Little Compton", "lat": 41.5209, "lon": -71.1921, "kind": "farm"}]
+    c.get("/api/geocode?q=young  family farm")
+    assert calls == ["Young Family Farm"]                 # the second, same up to case and spacing, came from the cache
+    assert c.get("/api/geocode?q=Y").status_code == 422
+
+
+def test_an_empty_place_name_clears_it(client):
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"lat": 41.5, "lon": -71.2, "place_name": "Sakonnet Point"}).json())
+    assert f[3]["fact"]["place_name"] == "Sakonnet Point"
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"lat": 41.6, "lon": -71.1, "place_name": ""}).json())
+    assert f[3]["fact"]["place_name"] is None and f[3]["lat"] == 41.6

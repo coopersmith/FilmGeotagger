@@ -196,10 +196,11 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
 
       <aside className="detail__side">
         <MapPane
+          rollKey={rollKey}
           frame={frame}
           trail={trail.data ?? []}
           busy={assign.isPending}
-          onPlace={(lat, lon, radius_m, label) => assign.mutate({ number: frame.number, body: { lat, lon, ...(radius_m ? { radius_m } : {}), ...(label ? { place_name: label } : {}) } })}
+          onPlace={(lat, lon, radius_m, label) => assign.mutate({ number: frame.number, body: { lat, lon, ...(radius_m ? { radius_m } : {}), ...(label !== undefined ? { place_name: label } : {}) } })}
         />
         <Timeline
           roll={roll}
