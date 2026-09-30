@@ -98,7 +98,14 @@ export function PhotoChronology({ rollKey, frame, prev, next, busy, error, onPic
                         return shots.map((s, k) => (
                           <li key={s.uuid} className={`photo ${frame.anchor_uuid === s.uuid ? "is-chosen" : ""} ${k > 0 ? "photo--burst" : ""}`}>
                             <button type="button" disabled={busy} onClick={() => setPending(s)} title={`${s.filename} — this frame was shot here`}>
-                              <img src={`${s.image}?size=small`} alt="" loading="lazy" />
+                              {s.image_missing ? (
+                                <span className="photo__void muted">
+                                  no image
+                                  <small>{/^\d+__/.test(s.filename) ? "received in Messages" : s.filename}</small>
+                                </span>
+                              ) : (
+                                <img src={`${s.image}?size=small`} alt="" loading="lazy" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
+                              )}
                               <span className="mono">
                                 {fmtClock(s.time, s.tzoffset, true)} <span className="muted">{fmtDelta(frame.time, s.time)}</span>
                               </span>
@@ -132,7 +139,7 @@ export function PhotoChronology({ rollKey, frame, prev, next, busy, error, onPic
 
         {pending && (
           <div className="chrono__confirm">
-            <img src={`${pending.image}?size=small`} alt="" />
+            {pending.image_missing ? <span className="photo__void muted">no image</span> : <img src={`${pending.image}?size=small`} alt="" />}
             <div className="chrono__confirmtext">
               <strong>This frame was shot here?</strong>
               <span className="muted">

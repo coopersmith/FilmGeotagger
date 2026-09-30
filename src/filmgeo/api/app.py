@@ -32,6 +32,7 @@ this process (Photos derivatives outside Terminal.app).
 from __future__ import annotations
 
 import dataclasses
+import os
 import threading
 import webbrowser
 from datetime import datetime, timedelta, timezone
@@ -326,7 +327,9 @@ def create_app(store: Store | None = None) -> FastAPI:
             d = days.setdefault(day, {"day": day, "count": 0, "events": {}})
             ev = d["events"].setdefault(e, {"index": e, "start": _t(event_by[e].start), "end": _t(event_by[e].end), "lat": event_by[e].lat,
                                             "lon": event_by[e].lon, "count": 0, "photos": []})
-            photo = _photo(a, r) | {"event": e, "more": []}
+            # Syndicated (Messages) photos keep a derivative path the library has since dropped:
+            # say so here rather than hand the page a broken image.
+            photo = _photo(a, r) | {"event": e, "more": [], "image_missing": not (a.derivative and os.path.exists(a.derivative))}
             last = ev["photos"][-1] if ev["photos"] else None
             if last is not None and (a.date - datetime.fromisoformat(last["_last"])).total_seconds() <= BURST_SECONDS:
                 last["more"].append(photo)

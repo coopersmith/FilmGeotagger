@@ -404,3 +404,6 @@ a { color: var(--safelight); }
 .q__more summary { cursor: pointer; font-size: 12.5px; list-style: none; margin-bottom: 8px; }
 .q__more summary::-webkit-details-marker { display: none; }
 @media (max-width: 700px) { .q__answers--primary { grid-template-columns: 1fr; } }
+.photo__void { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; aspect-ratio: 4 / 3; border-radius: 2px; background: var(--ink-3); font-size: 11px; text-align: center; }
+.photo__void small { font-size: 9.5px; color: var(--paper-mute); }
+.chrono__confirm .photo__void { width: 96px; }

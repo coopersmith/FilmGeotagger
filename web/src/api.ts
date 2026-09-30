@@ -275,6 +275,8 @@ export interface ChronoPhoto extends Photo {
   event: number;
   /** Shots within a minute of this one, folded behind it. */
   more: ChronoPhoto[];
+  /** The library's derivative is gone (a photo received in Messages, usually): no thumbnail. */
+  image_missing: boolean;
 }
 export interface ChronoEvent {
   index: number;
