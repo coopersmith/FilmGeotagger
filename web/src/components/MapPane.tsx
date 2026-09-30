@@ -1,6 +1,7 @@
 import maplibregl from "maplibre-gl";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Frame, TrailPoint } from "../api";
+import { parseCoords } from "../coords";
 import { fmtShort } from "../format";
 
 // Key-free vector tiles. Offline the base map is blank but the pin, trail and clusters still draw.
@@ -123,6 +124,10 @@ export function MapPane({ frame, trail, busy, onPlace }: Props) {
     else m.once("filmgeo:ready", setData);
   }, [frame, trail, busy]);
 
+  const [text, setText] = useState("");
+  useEffect(() => setText(""), [frame.number]);
+  const parsed = parseCoords(text);
+
   return (
     <div className="map">
       <div className="map__head">
@@ -134,6 +139,32 @@ export function MapPane({ frame, trail, busy, onPlace }: Props) {
           {trail.length > 0 && ` · ${trail.length} trail points`}
         </span>
       </div>
+      <form
+        className="map__coords"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (parsed && !busy) {
+            onPlaceRef.current(Number(parsed.lat.toFixed(6)), Number(parsed.lon.toFixed(6)));
+            setText("");
+          }
+        }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={frame.lat != null ? `${frame.lat.toFixed(5)}, ${frame.lon!.toFixed(5)} — paste coordinates or a map link` : "paste coordinates or a map link: 43.7696, 11.2558"}
+          aria-label="latitude and longitude"
+        />
+        <button className="btn" type="submit" disabled={!parsed || busy}>
+          set pin
+        </button>
+        {text.trim() !== "" && !parsed && <span className="error">not a latitude and longitude</span>}
+        {parsed && (
+          <span className="muted mono">
+            {parsed.lat.toFixed(5)}, {parsed.lon.toFixed(5)}
+          </span>
+        )}
+      </form>
       <div ref={el} className="map__canvas" />
     </div>
   );
