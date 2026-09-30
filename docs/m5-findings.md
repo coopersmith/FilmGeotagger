@@ -345,3 +345,26 @@ Checked on the synthetic roll with a three-shot burst added: 12 photos fold to 9
 a folded shot anchors the frame to it; the dialog's date + map link lands as `when` +
 `lat`/`lon` + `place_name`, and the next frame's chronology narrows to "between frame 3 and
 frame 5". Not measured on a real roll yet — that is the next review session.
+
+## "Shot moments after frame N" — the `same_time_as` fact
+
+Asked for on the first day of review ("photo 04 is taken at the same time as 03") and again
+after COO-176: why only *same day* as a neighbour, and why apparently only backwards? Two
+answers. The day link deduplicated its buttons when both pinned neighbours fell on one day,
+which read as backwards-only. And there was no moment link at all: the time editor and the new
+dialog let you *type* the neighbour's time, which is not the same thing as saying it.
+
+* `FrameFact.same_time_as` / `Constraint.same_time_as`: this frame was shot within
+  `SAME_MOMENT` (one minute) of frame N, on the side scan order allows. `frame_bounds` spreads
+  it like the day link (a chain 5 → 4 → 3 works from one dated root; two undated frames say
+  nothing); `model.anchored_moments` turns an anchored partner's instant into the bound on the
+  other frame, leaving the anchored frame to report its occasion as before.
+* One minute, not five: the solver clips a state's midpoint to the frame's bounds, so a
+  five-minute window put the written time at its far end. A minute bounds the error by what
+  the word means, and is the chronology's burst threshold.
+* Location follows for free: the partner is an interpolation anchor in `geo.place` at that
+  instant, so a frame a few seconds later lands on its pin.
+* In the question: "Or it was shot — moments after frame 3 · moments before frame 5 · same day
+  as …", both directions always, because before and after are different answers here. A date,
+  a day link and a moment link replace one another in `PUT …/assign`. The facts form and
+  `filmgeo facts --same-time-as` carry it too; the reverse test flips it.

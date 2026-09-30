@@ -36,10 +36,12 @@ export function Question({ frame, frames, busy, act, onOpenTime, onSetDatePlace,
       </div>
     );
   }
-  const handSet = frame.locked && !!frame.fact && (!!frame.fact.when || frame.fact.lat != null);
+  const handSet = frame.locked && !!frame.fact && (!!frame.fact.when || frame.fact.lat != null || !!frame.fact.same_time_as);
   if (frame.source === "locked" || handSet) {
     const what = frame.anchor
       ? ` to the photo at ${fmtShort(frame.anchor.time, frame.anchor.tzoffset)}`
+      : frame.fact?.same_time_as
+        ? ` moments ${frame.fact.same_time_as < frame.number ? "after" : "before"} frame ${frame.fact.same_time_as} — ${fmtShort(frame.time, frame.tzoffset)}${frame.fact.lat != null ? `, at ${frame.fact.place_name || `${frame.fact.lat.toFixed(4)}, ${frame.fact.lon!.toFixed(4)}`}` : ""}`
       : frame.fact?.when && frame.fact.lat != null
         ? ` to ${fmtShort(frame.time, frame.tzoffset)} at ${frame.fact.place_name || `${frame.fact.lat.toFixed(4)}, ${frame.fact.lon!.toFixed(4)}`}`
         : frame.fact?.when
@@ -114,6 +116,31 @@ export function Question({ frame, frames, busy, act, onOpenTime, onSetDatePlace,
           <span className="muted">browse {between.replace(/ \([^)]*\)/g, "")} in time order</span>
         </button>
       </div>
+      {(prev || next) && (
+        <div className="q__answers q__answers--pair">
+          <span className="muted">Or it was shot</span>
+          {prev && (
+            <button className="btn" disabled={busy} onClick={() => act({ same_time_as: prev.number })} title="within a few minutes after that frame, at its place; re-solves">
+              moments after frame {prev.number}
+            </button>
+          )}
+          {next && (
+            <button className="btn" disabled={busy} onClick={() => act({ same_time_as: next.number })} title="within a few minutes before that frame, at its place; re-solves">
+              moments before frame {next.number}
+            </button>
+          )}
+          {prev && (
+            <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: prev.number })} title="binds this frame to that day; re-solves">
+              same day as frame {prev.number}
+            </button>
+          )}
+          {next && (!prev || fmtShort(prev.time, prev.tzoffset).slice(0, 6) !== fmtShort(next.time, next.tzoffset).slice(0, 6)) && (
+            <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: next.number })} title="binds this frame to that day; re-solves">
+              same day as frame {next.number}
+            </button>
+          )}
+        </div>
+      )}
       <details className="q__more">
         <summary className="link">more ways</summary>
         <div className="q__answers">
@@ -125,16 +152,6 @@ export function Question({ frame, frames, busy, act, onOpenTime, onSetDatePlace,
           <button className="btn btn--ghost" disabled={busy} onClick={() => document.querySelector(".places")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
             pick a place you were ↓
           </button>
-          {prev && (
-            <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: prev.number })} title="binds this frame to that day; re-solves">
-              same day as frame {prev.number}
-            </button>
-          )}
-          {next && (!prev || fmtShort(prev.time, prev.tzoffset).slice(0, 6) !== fmtShort(next.time, next.tzoffset).slice(0, 6)) && (
-            <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: next.number })} title="binds this frame to that day; re-solves">
-              same day as frame {next.number}
-            </button>
-          )}
           <button className="btn btn--ghost" onClick={onOpenTime}>
             nudge the time by hand
           </button>

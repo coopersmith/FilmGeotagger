@@ -109,3 +109,27 @@ def test_same_day_as_takes_the_partner_day_when_one_side_is_dated():
     # Two undated frames sharing a day: nothing to propagate, nothing invented.
     b2 = frame_bounds([Constraint("frame", "user", frame=2, same_day_as=5)], 6, w)
     assert b2[1] == (w.start, w.end) and b2[4] == (w.start, w.end)
+
+
+def test_same_time_as_takes_the_partner_moment_on_the_side_scan_order_allows():
+    from datetime import datetime, timedelta, timezone
+
+    from filmgeo.signals.base import SAME_MOMENT, Constraint, Window, frame_bounds
+
+    utc = timezone.utc
+    w = Window(datetime(2026, 4, 1, tzinfo=utc), datetime(2026, 5, 1, tzinfo=utc))
+    t = datetime(2026, 4, 12, 14, 0, tzinfo=utc)
+    cs = [
+        Constraint("frame", "user", frame=3, t_lo=t, t_hi=t + timedelta(minutes=1)),
+        Constraint("frame", "user", frame=4, same_time_as=3),          # just after
+        Constraint("frame", "user", frame=2, same_time_as=3),          # just before
+        Constraint("frame", "user", frame=5, same_time_as=4),          # a chain: 5 -> 4 -> 3
+    ]
+    b = frame_bounds(cs, 6, w)
+    assert b[3] == (t, t + timedelta(minutes=1) + SAME_MOMENT)
+    assert b[1] == (t - SAME_MOMENT, t + timedelta(minutes=1))
+    assert b[4] == (t, t + timedelta(minutes=1) + 2 * SAME_MOMENT)
+    assert b[0] == (w.start, t + timedelta(minutes=1))                     # frame 1: order only
+    # Two undated frames: nothing to say.
+    b2 = frame_bounds([Constraint("frame", "user", frame=2, same_time_as=5)], 6, w)
+    assert b2[1] == (w.start, w.end) and b2[4] == (w.start, w.end)

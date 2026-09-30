@@ -73,12 +73,13 @@ class FrameFact:
     radius_m: float | None = None
     place_name: str | None = None
     same_day_as: int | None = None
+    same_time_as: int | None = None    # shot moments before or after that frame (scan order decides which)
     skip: bool = False
     note: str | None = None
 
     @property
     def is_empty(self) -> bool:
-        return not any((self.when, self.lat is not None, self.same_day_as, self.skip, self.note, self.place_name))
+        return not any((self.when, self.lat is not None, self.same_day_as, self.same_time_as, self.skip, self.note, self.place_name))
 
 
 @dataclass
@@ -152,6 +153,8 @@ class RollFacts:
                 problems.append(f"frame {n}: place needs both lat and lon")
             if f.same_day_as is not None and f.same_day_as == n:
                 problems.append(f"frame {n}: same-day-as itself")
+            if f.same_time_as is not None and f.same_time_as == n:
+                problems.append(f"frame {n}: same-time-as itself")
         # Dated frames must not contradict scan order.
         dated = []
         for n, f in sorted(self.frames.items()):
@@ -190,7 +193,7 @@ class UserFacts:
                 Constraint(
                     "frame", SOURCE, frame=n, t_lo=t_lo, t_hi=t_hi,
                     lat=f.lat, lon=f.lon, radius_m=f.radius_m,
-                    same_day_as=f.same_day_as, skip=f.skip,
+                    same_day_as=f.same_day_as, same_time_as=f.same_time_as, skip=f.skip,
                     note=f.note or f.place_name,
                 )
             )

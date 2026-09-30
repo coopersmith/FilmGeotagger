@@ -342,3 +342,24 @@ def test_a_dated_place_fact_inside_an_event_elsewhere_still_solves():
     e0 = next(j for j, s in enumerate(m.states) if s.kind == "event" and s.event == 0)
     e2 = next(j for j, s in enumerate(m.states) if s.kind == "event" and s.event == 2)
     assert m.emissions[0, e0] == -np.inf and np.isfinite(m.emissions[0, e2])
+
+
+def test_same_moment_as_an_anchored_frame_sits_just_after_it():
+    from filmgeo.align.model import anchored_moments
+    from filmgeo.signals.base import SAME_MOMENT
+
+    anchors = [anchor(0, 2, 10, 0, conf=0.9)]
+    cs = [Constraint("frame", "user", frame=2, same_time_as=1)]
+    derived = anchored_moments(anchors, cs)
+    assert len(derived) == 1 and derived[0].frame == 2 and derived[0].t_lo == at(2, 10) and derived[0].t_hi == at(2, 10) + SAME_MOMENT
+    sol = solve(build_model(WINDOW, EVENTS, 5, anchors, constraints=cs))
+    a = sol.assignments
+    assert at(2, 10) <= a[1].time < at(2, 10) + SAME_MOMENT and a[1].t_hi <= at(2, 10) + SAME_MOMENT
+    assert a[0].source == "anchored" and a[0].time == at(2, 10)          # the anchored frame is untouched
+    # The other way round: "frame 1 was shot moments before frame 2", frame 2 anchored.
+    anchors = [anchor(1, 2, 10, 0, conf=0.9)]
+    derived = anchored_moments(anchors, [Constraint("frame", "user", frame=1, same_time_as=2)])
+    assert derived[0].frame == 1 and derived[0].t_lo == at(2, 10) - SAME_MOMENT and derived[0].t_hi == at(2, 10) + timedelta(seconds=1)
+    # Both anchored, or neither: nothing derived.
+    assert anchored_moments([anchor(0, 2, 10, 0), anchor(1, 2, 10, 5)], cs) == []
+    assert anchored_moments(anchors, [Constraint("frame", "user", frame=4, same_time_as=5)]) == []

@@ -105,7 +105,7 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
           </summary>
           <TimeEditor rollKey={rollKey} frame={frame} />
         </details>
-        <details className="fold" open={!!(frame.fact && (frame.fact.place_name || frame.fact.same_day_as || frame.fact.note))}>
+        <details className="fold" open={!!(frame.fact && (frame.fact.place_name || frame.fact.same_day_as || frame.fact.same_time_as || frame.fact.note))}>
           <summary>
             <span className="eyebrow">Facts about this frame</span>
             <span className="muted"> — a known day, a place name, same day as another frame</span>

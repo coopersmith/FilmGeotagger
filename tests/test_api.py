@@ -566,3 +566,18 @@ def test_frame_photos_chronological_by_day_and_event_with_bursts_folded(client):
     assert not any(p["image_missing"] for e in day2["events"] for p in e["photos"])
     assert client.get(f"/api/rolls/{KEY}/frames/3/photos?all_days=true").json()["total"] == 12
     assert client.get(f"/api/rolls/{KEY}/frames/9/photos").status_code == 404
+
+
+def test_same_moment_as_a_neighbour_locks_the_frame_beside_it(client):
+    # Frame 2 was shot moments after frame 1 (anchored at 09:20): it lands inside a minute of it.
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"same_time_as": 1}).json())
+    assert f[2]["fact"]["same_time_as"] == 1 and f[2]["locked"]
+    t2 = datetime.fromisoformat(f[2]["time"])
+    assert at(2, 9, 20) <= t2 < at(2, 9, 21) and datetime.fromisoformat(f[2]["t_hi"]) <= at(2, 9, 21)
+    # A moment link replaces a day link and a date, and a date replaces it.
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"same_day_as": 1}).json())
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"same_time_as": 2}).json())
+    assert f[3]["fact"]["same_day_as"] is None and f[3]["fact"]["same_time_as"] == 2
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"when": at(2, 14, 5).isoformat()}).json())
+    assert f[3]["fact"]["same_time_as"] is None and f[3]["fact"]["when"]
+    assert client.put(f"/api/rolls/{KEY}/frames/4/assign", json={"same_time_as": 4}).status_code == 422

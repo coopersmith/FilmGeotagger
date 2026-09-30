@@ -49,7 +49,7 @@ from typing import Literal
 import numpy as np
 
 from filmgeo.events import Event, haversine_m
-from filmgeo.signals.base import Constraint, Window, frame_bounds
+from filmgeo.signals.base import SAME_MOMENT, Constraint, Window, frame_bounds
 
 Kind = Literal["anchor", "event", "gap", "outside"]
 NEG = -np.inf
@@ -522,6 +522,28 @@ def anchored_days(anchors: list[Anchor], constraints: list[Constraint]) -> list[
     return out
 
 
+def anchored_moments(anchors: list[Anchor], constraints: list[Constraint]) -> list[Constraint]:
+    """"Same moment as frame N" where N is anchored: N's instant, stretched by SAME_MOMENT on the side
+    scan order allows, as a constraint on the *other* frame.
+
+    The anchored frame itself is left alone — it reports its occasion (COO-145) and a one-second
+    bound on it would collapse that. The partner gets [t, t + SAME_MOMENT) when it comes later
+    in the roll and (t - SAME_MOMENT, t] when earlier; `frame_bounds` carries it on down a chain.
+    """
+    by_frame = {a.frame + 1: a for a in anchors}
+    out: list[Constraint] = []
+    for c in constraints:
+        if c.scope != "frame" or not c.frame or not c.same_time_as:
+            continue
+        for me, partner in ((c.frame, c.same_time_as), (c.same_time_as, c.frame)):
+            a = by_frame.get(partner)
+            if a is None or me in by_frame:
+                continue
+            lo, hi = (a.time, a.time + SAME_MOMENT) if me > partner else (a.time - SAME_MOMENT, a.time + timedelta(seconds=1))
+            out.append(Constraint("frame", "anchor", frame=me, t_lo=lo, t_hi=hi, note=f"moments {'after' if me > partner else 'before'} frame {partner}"))
+    return out
+
+
 # ---------------------------------------------------------------------------------------
 
 
@@ -540,7 +562,7 @@ def build_model(
 ) -> RollModel:
     params = params or AlignParams()
     anchors = [a for a in (anchors or []) if a.locked or a.confidence >= params.min_anchor_confidence]
-    constraints = list(constraints or []) + anchored_days(anchors, constraints or [])
+    constraints = list(constraints or []) + anchored_days(anchors, constraints or []) + anchored_moments(anchors, constraints or [])
     states = build_states(window, events, anchors)
     em, skipped = build_emissions(states, n_frames, params, anchors, events, sims, event_ids, clues, constraints, window, event_weather)
     tr = build_transitions(states, params)

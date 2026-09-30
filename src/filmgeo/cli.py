@@ -162,7 +162,7 @@ def _print_facts(facts, n_frames: int | None) -> None:
     frames = {n: f for n, f in sorted(facts.frames.items()) if not f.is_empty}
     if frames:
         ft = Table(title="frame facts")
-        for col in ("#", "when", "place", "same day as", "skip", "note"):
+        for col in ("#", "when", "place", "same day as", "same moment as", "skip", "note"):
             ft.add_column(col)
         for n, f in frames.items():
             place = ""
@@ -170,7 +170,7 @@ def _print_facts(facts, n_frames: int | None) -> None:
                 place = f"{f.lat:.5f}, {f.lon:.5f}" + (f" ±{f.radius_m:.0f} m" if f.radius_m else "")
             if f.place_name:
                 place = f"{f.place_name} ({place})" if place else f.place_name
-            ft.add_row(str(n), f.when or "", place, str(f.same_day_as or ""), "yes" if f.skip else "", f.note or "")
+            ft.add_row(str(n), f.when or "", place, str(f.same_day_as or ""), str(f.same_time_as or ""), "yes" if f.skip else "", f.note or "")
         console.print(ft)
     for p in facts.validate(n_frames):
         console.print(f"[red]problem:[/] {p}")
@@ -195,6 +195,7 @@ def facts(
     place_name: str = typer.Option(None, help="frame: place label"),
     radius: float = typer.Option(None, help="frame: place radius in metres"),
     same_day_as: int = typer.Option(None, help="frame: same day as this frame number"),
+    same_time_as: int = typer.Option(None, help="frame: shot moments before/after this frame number"),
     skip: bool = typer.Option(None, "--skip/--no-skip", help="frame: leave unassigned"),
     frame_note: str = typer.Option(None, help="frame: free-text note"),
     forget: bool = typer.Option(False, help="frame: drop every fact about it"),
@@ -224,7 +225,7 @@ def facts(
     if camera and camera not in KNOWN_CAMERAS:
         console.print(f"[yellow]note:[/] {camera!r} is not one of {', '.join(KNOWN_CAMERAS)} — fine if it is a new body")
 
-    frame_opts = (on, place, place_name, radius, same_day_as, skip, frame_note)
+    frame_opts = (on, place, place_name, radius, same_day_as, same_time_as, skip, frame_note)
     if frame is None and (any(v is not None for v in frame_opts) or forget):
         raise typer.BadParameter("frame options need --frame N")
     if frame is not None:
@@ -249,6 +250,8 @@ def facts(
                 ff.radius_m = radius
             if same_day_as is not None:
                 ff.same_day_as = same_day_as
+            if same_time_as is not None:
+                ff.same_time_as = same_time_as
             if skip is not None:
                 ff.skip = skip
             if frame_note is not None:
@@ -357,7 +360,7 @@ def signals(
         for col in ("scope", "frame", "from", "to", "place", "other"):
             c.add_column(col)
         for k in ev.constraints:
-            other = ", ".join(x for x in (f"same day as {k.same_day_as}" if k.same_day_as else "", "skip" if k.skip else "", k.note or "") if x)
+            other = ", ".join(x for x in (f"same day as {k.same_day_as}" if k.same_day_as else "", f"same moment as {k.same_time_as}" if k.same_time_as else "", "skip" if k.skip else "", k.note or "") if x)
             c.add_row(k.scope, str(k.frame or ""), f"{k.t_lo:%Y-%m-%d %H:%M}" if k.t_lo else "",
                       f"{k.t_hi:%Y-%m-%d %H:%M}" if k.t_hi else "",
                       f"{k.lat:.4f},{k.lon:.4f}" if k.has_place else "", other)
