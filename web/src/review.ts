@@ -5,6 +5,8 @@ import type { Frame, Roll } from "./api";
 export const GREEN = 0.8;
 
 export const isAnchored = (f: Frame) => f.source === "anchored" || f.source === "locked";
+/** A frame whose time is fixed — by a photo, or by a date the user typed — and so bounds its neighbours. */
+export const isPinned = (f: Frame) => isAnchored(f) || (f.locked && !!f.fact?.when);
 export const isResolved = (f: Frame) => f.status === "confirmed" || f.source === "skipped";
 export const isGreen = (f: Frame) => f.confidence >= GREEN && f.source !== "skipped";
 
@@ -79,7 +81,7 @@ export const STEPS: { key: string; title: string; what: string }[] = [
   { key: "window", title: "Tell it when", what: "Set the roll's window in roll facts — the month, or the trip. The cheapest evidence there is." },
   { key: "verify", title: "Let Claude look", what: "`filmgeo verify <roll>` shows each frame its most similar phone photos and asks which is the same occasion." },
   { key: "greens", title: "Confirm the greens", what: "Frames with a green bar are matched and consistent with their neighbours. Check the photo, press Enter." },
-  { key: "reds", title: "Resolve the rest", what: "Pick a possible photo, say it is the same day as a neighbour, type a time, or mark it no reference. Every choice re-solves the roll." },
+  { key: "reds", title: "Resolve the rest", what: "Set the date and place by hand (d), or find the phone photo taken just before or after it in time order (p). Every choice re-solves the roll." },
   { key: "write", title: "Write", what: "Once every frame is confirmed, the dates, offsets, GPS and keywords go into the scan files; originals are kept, and restore is one click." },
 ];
 

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 export const KEYS: [string, string][] = [
   ["j / k  or  → / ←", "next / previous frame"],
+  ["d", "set the date and place by hand"],
+  ["p", "the phone photos around this frame, in time order"],
   ["1 – 9", "use possible photo 1–9's time and GPS"],
   [".", "next frame that needs you"],
   ["Enter", "confirm this frame (again to unconfirm)"],

@@ -1,6 +1,6 @@
 import type { Frame } from "../api";
 import { fmtShort } from "../format";
-import { isAnchored } from "../review";
+import { isPinned } from "../review";
 
 interface Props {
   frame: Frame;
@@ -8,13 +8,15 @@ interface Props {
   busy: boolean;
   act: (body: Record<string, unknown>) => void;
   onOpenTime: () => void;
+  onSetDatePlace: () => void;
+  onBrowsePhotos: () => void;
 }
 
 /** The one question this frame asks, and the answers as buttons. Everything else is beneath it. */
-export function Question({ frame, frames, busy, act, onOpenTime }: Props) {
+export function Question({ frame, frames, busy, act, onOpenTime, onSetDatePlace, onBrowsePhotos }: Props) {
   const i = frames.findIndex((f) => f.number === frame.number);
-  const prev = [...frames.slice(0, i)].reverse().find(isAnchored);
-  const next = frames.slice(i + 1).find(isAnchored);
+  const prev = [...frames.slice(0, i)].reverse().find(isPinned);
+  const next = frames.slice(i + 1).find(isPinned);
   const confirmed = frame.status === "confirmed";
   const confirmBtn = (
     <button className={`btn ${confirmed ? "btn--on" : ""}`} disabled={busy} onClick={() => act({ confirmed: !confirmed })} title="Enter">
@@ -34,14 +36,30 @@ export function Question({ frame, frames, busy, act, onOpenTime }: Props) {
       </div>
     );
   }
-  if (frame.source === "locked") {
+  const handSet = frame.locked && !!frame.fact && (!!frame.fact.when || frame.fact.lat != null);
+  if (frame.source === "locked" || handSet) {
+    const what = frame.anchor
+      ? ` to the photo at ${fmtShort(frame.anchor.time, frame.anchor.tzoffset)}`
+      : frame.fact?.when && frame.fact.lat != null
+        ? ` to ${fmtShort(frame.time, frame.tzoffset)} at ${frame.fact.place_name || `${frame.fact.lat.toFixed(4)}, ${frame.fact.lon!.toFixed(4)}`}`
+        : frame.fact?.when
+          ? ` to ${fmtShort(frame.time, frame.tzoffset)}; the place comes from the trail`
+          : frame.fact?.lat != null
+            ? ` at ${frame.fact.place_name || `${frame.fact.lat.toFixed(4)}, ${frame.fact.lon!.toFixed(4)}`}; the time comes from its neighbours`
+            : "";
     return (
       <div className="q q--locked">
         <p className="q__text">
-          You set this one{frame.anchor ? ` to the photo at ${fmtShort(frame.anchor.time, frame.anchor.tzoffset)}` : ""}. Keep it?
+          You set this one{what}. Keep it?
         </p>
         <div className="q__answers">
           {confirmBtn}
+          <button className="btn btn--ghost" disabled={busy} onClick={onSetDatePlace} title="d">
+            change the date or place…
+          </button>
+          <button className="btn btn--ghost" disabled={busy} onClick={onBrowsePhotos} title="p">
+            a different photo, in time order…
+          </button>
           <button className="btn btn--ghost" disabled={busy} onClick={() => act({ unlock: true })} title="u">
             undo my decision
           </button>
@@ -63,6 +81,12 @@ export function Question({ frame, frames, busy, act, onOpenTime }: Props) {
           <button className="btn btn--ghost" disabled={busy} onClick={() => act({ no_reference: true })} title="N — no phone photo shows this frame at all">
             no photo shows this frame
           </button>
+          <button className="btn btn--ghost" disabled={busy} onClick={onBrowsePhotos} title="p">
+            a different photo, in time order…
+          </button>
+          <button className="btn btn--ghost" disabled={busy} onClick={onSetDatePlace} title="d">
+            set the date and place myself…
+          </button>
         </div>
       </div>
     );
@@ -78,36 +102,51 @@ export function Question({ frame, frames, busy, act, onOpenTime }: Props) {
   return (
     <div className="q q--open">
       <p className="q__text">
-        No photo matched. It was shot {between}. <span className="muted">What do you know?</span>
+        No photo matched. It was shot {between}. <span className="muted">Two ways to place it:</span>
       </p>
-      <div className="q__answers">
-        <button className="btn" disabled={busy} onClick={() => document.querySelector(".cands")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-          pick a possible photo ↓
+      <div className="q__answers q__answers--primary">
+        <button className="btn btn--primary" disabled={busy} onClick={onSetDatePlace} title="d — type the date and time, paste coordinates or a map link">
+          <strong>Set the date and place</strong>
+          <span className="muted">you know when or where — type it</span>
         </button>
-        <button className="btn" disabled={busy} onClick={() => document.querySelector(".places")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-          pick a place you were ↓
-        </button>
-        {prev && (
-          <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: prev.number })} title="binds this frame to that day; re-solves">
-            same day as frame {prev.number}
-          </button>
-        )}
-        {next && (!prev || fmtShort(prev.time, prev.tzoffset).slice(0, 6) !== fmtShort(next.time, next.tzoffset).slice(0, 6)) && (
-          <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: next.number })} title="binds this frame to that day; re-solves">
-            same day as frame {next.number}
-          </button>
-        )}
-        <button className="btn btn--ghost" onClick={onOpenTime}>
-          type a time
-        </button>
-        <button className={`btn btn--ghost ${frame.override?.no_reference ? "btn--on" : ""}`} disabled={busy} onClick={() => act({ no_reference: !frame.override?.no_reference })} title="N — leave it between its neighbours">
-          no photo shows it — leave it here
-        </button>
-        {confirmBtn}
-        <button className="btn btn--ghost" disabled={busy} onClick={() => act({ skip: true })} title="x">
-          unknown, skip
+        <button className="btn btn--primary" disabled={busy} onClick={onBrowsePhotos} title="p — every phone photo between the neighbouring frames, oldest first">
+          <strong>Find the phone photo taken next to it</strong>
+          <span className="muted">browse {between.replace(/ \([^)]*\)/g, "")} in time order</span>
         </button>
       </div>
+      <details className="q__more">
+        <summary className="link">more ways</summary>
+        <div className="q__answers">
+          {frame.possible.length > 0 && (
+            <button className="btn btn--ghost" disabled={busy} onClick={() => document.querySelector(".cands")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+              pick a possible photo ↓
+            </button>
+          )}
+          <button className="btn btn--ghost" disabled={busy} onClick={() => document.querySelector(".places")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            pick a place you were ↓
+          </button>
+          {prev && (
+            <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: prev.number })} title="binds this frame to that day; re-solves">
+              same day as frame {prev.number}
+            </button>
+          )}
+          {next && (!prev || fmtShort(prev.time, prev.tzoffset).slice(0, 6) !== fmtShort(next.time, next.tzoffset).slice(0, 6)) && (
+            <button className="btn btn--ghost" disabled={busy} onClick={() => act({ same_day_as: next.number })} title="binds this frame to that day; re-solves">
+              same day as frame {next.number}
+            </button>
+          )}
+          <button className="btn btn--ghost" onClick={onOpenTime}>
+            nudge the time by hand
+          </button>
+          <button className={`btn btn--ghost ${frame.override?.no_reference ? "btn--on" : ""}`} disabled={busy} onClick={() => act({ no_reference: !frame.override?.no_reference })} title="N — leave it between its neighbours">
+            no photo shows it — leave it here
+          </button>
+          {confirmBtn}
+          <button className="btn btn--ghost" disabled={busy} onClick={() => act({ skip: true })} title="x">
+            unknown, skip
+          </button>
+        </div>
+      </details>
     </div>
   );
 }

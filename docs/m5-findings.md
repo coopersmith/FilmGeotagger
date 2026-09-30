@@ -308,3 +308,40 @@ and 8 the list offers six, Young Family Farm among them; "beach" finds Grinnell'
 Not done: splitting a photo event when a visit elsewhere falls inside it (the cause behind
 PR #36's workaround). The place-yields rule covers the case; the split would make the
 timeline honest about it.
+
+## COO-176 — the unmatched frame: set the date and place, or find the photo taken next to it
+
+After a real review session with the Indie batch the user called the UI "fairly unusable" for
+frames with no match: the answers were a row of seven equal buttons about the *mechanism*
+(possible photo, place, same day, type a time, no reference, confirm, skip), when the two things
+the tool exists to produce are a date and a pair of coordinates, and the phone photo that dates a
+frame is very often one that looks nothing like it — taken two seconds later, facing north
+instead of south. Retrieval cannot find that photo (COO-146: it finds the scene, not the shot);
+the person who was there can, if the photos are shown in the order they were taken.
+
+* **`GET …/frames/{n}/photos`**: every pool photo between the pinned frames either side of this
+  one (`order_bounds`, the same rule as the places list; `?all_days=true` for the whole window),
+  grouped by local day and then by event, in time order, with shots within 60 s of the previous
+  one folded behind it (`more`). The 22-day roll's widest gap holds a few hundred photos; folded,
+  a screen or two.
+* **"Find the phone photo taken next to it"** (`p`): a sheet with the frame on the left for
+  comparison and that list on the right, day headings sticky, bursts behind "+N within a
+  minute". Clicking a photo asks "This frame was shot here?" and states what will happen (the
+  photo's time, offset and GPS); yes sets it as the anchor, which is the existing `anchor`
+  override, so the roll re-solves around it exactly as for a shortlisted pick.
+* **"Set the date and place"** (`d`): one form. A *when* half (local date-time and zone, behind
+  a checkbox so a frame can be placed without being dated), a *where* half (one box that takes
+  decimal, hemisphere, DMS or a Google/Apple Maps link, via `parseCoords`, plus an optional
+  place name). One button, which says what it is about to save ("date only — the trail places
+  it", "place only — the neighbours date it"). It sends the same `when`/`lat`/`lon`/`place_name`
+  facts the time editor and the map already send.
+* **The open frame leads with those two**; the seven earlier answers are under "more ways".
+  Anchored and locked frames offer both as ghosts. A frame the user dated by hand now reads
+  "You set this one to 5 Apr 16:14 at Young Family Farm. Keep it?" instead of "No photo
+  matched", and counts as pinned for its neighbours' bounds in the UI (`isPinned`), as it
+  already did on the server.
+
+Checked on the synthetic roll with a three-shot burst added: 12 photos fold to 9 cards; picking
+a folded shot anchors the frame to it; the dialog's date + map link lands as `when` +
+`lat`/`lon` + `place_name`, and the next frame's chronology narrows to "between frame 3 and
+frame 5". Not measured on a real roll yet — that is the next review session.
