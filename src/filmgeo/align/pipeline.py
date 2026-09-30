@@ -462,7 +462,7 @@ def _locked(number: int, a, facts: RollFacts, overrides: RollOverrides) -> bool:
     if o and o.locks:
         return True
     ff = facts.frames.get(number)
-    return bool(ff and (ff.when or ff.lat is not None or ff.skip))
+    return bool(ff and (ff.when or ff.lat is not None or ff.skip or ff.same_time_as))
 
 
 def save(r: RollRun, directory: Path = ASSIGNMENTS_DIR) -> Path:

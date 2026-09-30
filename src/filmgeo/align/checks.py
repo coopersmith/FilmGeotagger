@@ -60,7 +60,7 @@ class RollInputs:
             sims=None if self.sims is None else self.sims[::-1].copy(),
             event_ids=self.event_ids,
             clues=None if self.clues is None else list(reversed(self.clues)),
-            constraints=[dataclasses.replace(c, frame=flip1(c.frame), same_day_as=flip1(c.same_day_as))
+            constraints=[dataclasses.replace(c, frame=flip1(c.frame), same_day_as=flip1(c.same_day_as), same_time_as=flip1(c.same_time_as))
                          if c.scope == "frame" else c for c in self.constraints],
             same_outing={(flip(b), flip(a)) for a, b in self.same_outing},
             params=self.params,

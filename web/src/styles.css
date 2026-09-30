@@ -407,3 +407,5 @@ a { color: var(--safelight); }
 .photo__void { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; aspect-ratio: 4 / 3; border-radius: 2px; background: var(--ink-3); font-size: 11px; text-align: center; }
 .photo__void small { font-size: 9.5px; color: var(--paper-mute); }
 .chrono__confirm .photo__void { width: 96px; }
+.q__answers--pair { align-items: center; margin-bottom: 10px; }
+.q__answers--pair > .muted { font-size: 12.5px; }

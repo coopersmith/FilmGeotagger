@@ -57,6 +57,7 @@ export interface FrameFact {
   radius_m: number | null;
   place_name: string | null;
   same_day_as: number | null;
+  same_time_as: number | null;
   skip: boolean;
   note: string | null;
 }
@@ -215,6 +216,7 @@ export interface AssignBody {
   radius_m?: number;
   place_name?: string;
   same_day_as?: number;
+  same_time_as?: number;
   skip?: boolean;
   note?: string;
   confirmed?: boolean;

@@ -6,7 +6,7 @@ export const GREEN = 0.8;
 
 export const isAnchored = (f: Frame) => f.source === "anchored" || f.source === "locked";
 /** A frame whose time is fixed — by a photo, or by a date the user typed — and so bounds its neighbours. */
-export const isPinned = (f: Frame) => isAnchored(f) || (f.locked && !!f.fact?.when);
+export const isPinned = (f: Frame) => isAnchored(f) || (f.locked && !!(f.fact?.when || f.fact?.same_time_as));
 export const isResolved = (f: Frame) => f.status === "confirmed" || f.source === "skipped";
 export const isGreen = (f: Frame) => f.confidence >= GREEN && f.source !== "skipped";
 

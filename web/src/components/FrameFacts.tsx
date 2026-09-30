@@ -6,11 +6,14 @@ import { useAssign } from "../api";
 export function FrameFacts({ rollKey, frame, nFrames }: { rollKey: string; frame: Frame; nFrames: number }) {
   const assign = useAssign(rollKey);
   const ff = frame.fact;
-  const [form, setForm] = useState({ when: ff?.when ?? "", place_name: ff?.place_name ?? "", same_day_as: ff?.same_day_as ? String(ff.same_day_as) : "", note: ff?.note ?? "" });
+  const initial = () => ({ when: ff?.when ?? "", place_name: ff?.place_name ?? "", same_day_as: ff?.same_day_as ? String(ff.same_day_as) : "", same_time_as: ff?.same_time_as ? String(ff.same_time_as) : "", note: ff?.note ?? "" });
+  const [form, setForm] = useState(initial);
   useEffect(() => {
-    setForm({ when: ff?.when ?? "", place_name: ff?.place_name ?? "", same_day_as: ff?.same_day_as ? String(ff.same_day_as) : "", note: ff?.note ?? "" });
+    setForm(initial());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame.number, ff]);
-  const dirty = form.when !== (ff?.when ?? "") || form.place_name !== (ff?.place_name ?? "") || form.same_day_as !== (ff?.same_day_as ? String(ff.same_day_as) : "") || form.note !== (ff?.note ?? "");
+  const was = initial();
+  const dirty = form.when !== was.when || form.place_name !== was.place_name || form.same_day_as !== was.same_day_as || form.same_time_as !== was.same_time_as || form.note !== was.note;
   const others = Array.from({ length: nFrames }, (_, i) => i + 1).filter((n) => n !== frame.number);
 
   return (
@@ -22,14 +25,15 @@ export function FrameFacts({ rollKey, frame, nFrames }: { rollKey: string; frame
         const body: Parameters<typeof assign.mutate>[0]["body"] = {};
         if (form.when !== (ff?.when ?? "") && form.when.trim()) body.when = form.when.trim();
         if (form.place_name !== (ff?.place_name ?? "")) body.place_name = form.place_name;
-        if (form.same_day_as !== (ff?.same_day_as ? String(ff.same_day_as) : "") && form.same_day_as) body.same_day_as = Number(form.same_day_as);
+        if (form.same_day_as !== was.same_day_as && form.same_day_as) body.same_day_as = Number(form.same_day_as);
+        if (form.same_time_as !== was.same_time_as && form.same_time_as) body.same_time_as = Number(form.same_time_as);
         if (form.note !== (ff?.note ?? "")) body.note = form.note;
         assign.mutate({ number: frame.number, body });
       }}
     >
       <div className="ffacts__head">
         <span className="eyebrow">Frame facts</span>
-        <span className="muted">a day ("2026-04-12"), a month, or a minute; a place name for the pin; the frame it shares a day with</span>
+        <span className="muted">a day ("2026-04-12"), a month, or a minute; a place name for the pin; the frame it shares a day, or a moment, with</span>
       </div>
       <div className="ffacts__grid">
         <label>
@@ -47,6 +51,17 @@ export function FrameFacts({ rollKey, frame, nFrames }: { rollKey: string; frame
             {others.map((n) => (
               <option key={n} value={n}>
                 frame {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="eyebrow">same moment as</span>
+          <select value={form.same_time_as} onChange={(e) => setForm((s) => ({ ...s, same_time_as: e.target.value }))}>
+            <option value="">—</option>
+            {others.map((n) => (
+              <option key={n} value={n}>
+                frame {n} ({n < frame.number ? "just after it" : "just before it"})
               </option>
             ))}
           </select>

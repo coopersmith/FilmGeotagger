@@ -72,13 +72,21 @@ class TrailPoint:
 Scope = Literal["roll", "frame"]
 
 
+# "Same moment as frame N": how far apart two frames of one scene can be. A minute — the user is
+# saying "I turned round and took the next one" — and the same threshold the chronology folds
+# bursts at. The solver clips a state's midpoint to the bound, so a wider window would put the
+# written time at its far end, not beside the partner.
+SAME_MOMENT = timedelta(minutes=1)
+
+
 @dataclass(frozen=True)
 class Constraint:
     """Something that must be true of a roll or of one frame.
 
     Any subset of the fields may be set. A frame constraint with only `t_lo`/`t_hi` is "frame 12
     was shot on 4 July"; one with only a place is "frames 1-8 are in Lisbon"; `same_day_as`
-    ties two frames together; `skip` says the user wants no assignment at all.
+    ties two frames to one calendar day and `same_time_as` to one moment (within
+    `SAME_MOMENT`, in scan order); `skip` says the user wants no assignment at all.
     """
 
     scope: Scope
@@ -90,6 +98,7 @@ class Constraint:
     lon: float | None = None
     radius_m: float | None = None
     same_day_as: int | None = None
+    same_time_as: int | None = None
     skip: bool = False
     note: str | None = None
 
@@ -203,6 +212,26 @@ def frame_bounds(
                 day_lo = t.replace(hour=0, minute=0, second=0, microsecond=0)
                 day_hi = day_lo + timedelta(days=1)
                 new_lo, new_hi = max(lo[j], day_lo), min(hi[j], day_hi)
+                if (new_lo, new_hi) != (lo[j], hi[j]):
+                    lo[j], hi[j] = new_lo, new_hi
+                    changed = True
+    # "Same moment as frame N": the partner's bounds, stretched by SAME_MOMENT on the side scan
+    # order allows — a later frame sits at or just after N, an earlier one at or just before.
+    # Like the day link, it needs one side to be dated to say anything.
+    moments = {(c.frame, c.same_time_as) for c in constraints
+               if c.scope == "frame" and c.frame and c.same_time_as and 1 <= c.same_time_as <= n_frames}
+    changed = True
+    while changed and moments:
+        changed = False
+        for a, b in list(moments):
+            for src, dst in ((a, b), (b, a)):
+                i, j = src - 1, dst - 1
+                if (lo[i], hi[i]) == (window.start, window.end):
+                    continue
+                if j > i:
+                    new_lo, new_hi = max(lo[j], lo[i]), min(hi[j], hi[i] + SAME_MOMENT)
+                else:
+                    new_lo, new_hi = max(lo[j], lo[i] - SAME_MOMENT), min(hi[j], hi[i])
                 if (new_lo, new_hi) != (lo[j], hi[j]):
                     lo[j], hi[j] = new_lo, new_hi
                     changed = True

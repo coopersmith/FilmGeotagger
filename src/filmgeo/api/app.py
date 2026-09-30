@@ -71,6 +71,7 @@ class AssignBody(BaseModel):
     radius_m: float | None = None
     place_name: str | None = None
     same_day_as: int | None = None
+    same_time_as: int | None = None
     skip: bool | None = None
     note: str | None = None
     confirmed: bool | None = None
@@ -388,7 +389,7 @@ def create_app(store: Store | None = None) -> FastAPI:
             o.no_reference = body.no_reference
             if body.no_reference:
                 o.anchor = None
-        fact_fields = (body.when, body.lat, body.lon, body.radius_m, body.place_name, body.same_day_as, body.skip, body.note)
+        fact_fields = (body.when, body.lat, body.lon, body.radius_m, body.place_name, body.same_day_as, body.same_time_as, body.skip, body.note)
         changed = body.unlock or body.anchor is not None or bool(body.reject) or body.no_reference is not None \
             or any(x is not None for x in fact_fields)
         if body.confirmed is not None:
@@ -399,17 +400,20 @@ def create_app(store: Store | None = None) -> FastAPI:
             o.anchor, o.no_reference = None, False   # "unknown" means no photo, not a locked one
         if any(x is not None for x in fact_fields):
             ff = facts.frame(n)
+            # A date, a day link and a moment link each say when the frame was shot; the newest
+            # replaces the others, because two of them would only ever contradict.
             if body.when is not None:
                 ff.when = _as_period(body.when, facts)
-                if body.same_day_as is None:
-                    ff.same_day_as = None        # a date replaces "same day as"; the two would only contradict
+                ff.same_day_as, ff.same_time_as = None, None
+            elif body.same_time_as is not None:
+                ff.when, ff.same_day_as = None, None
             elif body.same_day_as is not None:
-                ff.when = None                   # and the other way round
+                ff.when, ff.same_time_as = None, None
             if (body.lat is None) != (body.lon is None):
                 raise HTTPException(422, "a place needs both lat and lon")
             if body.lat is not None:
                 ff.lat, ff.lon = body.lat, body.lon
-            for k in ("radius_m", "place_name", "same_day_as", "skip", "note"):
+            for k in ("radius_m", "place_name", "same_day_as", "same_time_as", "skip", "note"):
                 v = getattr(body, k)
                 if v is not None:
                     setattr(ff, k, v)
