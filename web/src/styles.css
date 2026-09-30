@@ -262,11 +262,33 @@ a { color: var(--safelight); }
 .maplibregl-ctrl button .maplibregl-ctrl-icon { filter: invert(0.85); }
 .maplibregl-ctrl-attrib { background: rgba(15, 13, 11, 0.7) !important; color: var(--paper-mute); font-size: 10px; }
 .maplibregl-ctrl-attrib a { color: var(--paper-dim); }
-.pin { width: 18px; height: 18px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--safelight); border: 2px solid var(--ink); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6); cursor: grab; }
-.pin--locked { background: var(--lock); }
-.cluster { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background: rgba(240, 166, 58, 0.18); border: 2px solid var(--safelight); color: var(--paper); font-family: var(--mono); font-size: 10px; line-height: 1; cursor: pointer; backdrop-filter: blur(2px); }
-.cluster b { font-size: 13px; }
-.cluster:hover { background: rgba(240, 166, 58, 0.4); }
+/* The frame: a big red ringed dot with a label — the one thing on the map that is not the trail. Blue when the user set it. */
+.pin { --pinc: #e8503a; position: relative; width: 22px; height: 22px; cursor: grab; z-index: 2; }
+.pin--locked { --pinc: var(--lock); }
+.pin__dot { position: absolute; inset: 0; border-radius: 50%; background: var(--pinc); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--pinc), 0 4px 14px rgba(0, 0, 0, 0.7); }
+.pin__label { position: absolute; top: 27px; left: 50%; transform: translateX(-50%); font: 600 11px var(--body); color: #fff; background: var(--pinc); padding: 2px 7px; border-radius: 10px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
+.pin:active { cursor: grabbing; }
+.cluster, .hit { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background: rgba(15, 13, 11, 0.82); border: 2.5px solid var(--ok); color: var(--paper); font-family: var(--mono); font-size: 10px; line-height: 1; cursor: pointer; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5); }
+.cluster b, .hit b { font-size: 13px; color: var(--ok); }
+.cluster:hover, .hit:hover { background: rgba(124, 196, 127, 0.9); color: var(--ink); }
+.cluster:hover b, .hit:hover b { color: var(--ink); }
+.hit { width: 30px; height: 30px; border-style: dashed; }
+.map__canvas.is-placing { outline: 2px solid var(--safelight); }
+.map__tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.map__search { display: flex; gap: 6px; flex: 1 1 200px; }
+.map__search input { flex: 1 1 0; min-width: 0; background: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font-size: 12.5px; color: var(--paper); }
+.map__search input:focus { outline: none; border-color: var(--safelight); }
+.map__hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; max-height: 120px; overflow-y: auto; }
+.map__hits .link { text-align: left; }
+.map__hits b { display: inline-block; width: 16px; color: var(--ok); }
+.map__legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; }
+.map__legend span { display: inline-flex; align-items: center; gap: 5px; }
+.lg { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.lg--pin { background: #e8503a; box-shadow: 0 0 0 2px #fff inset; }
+.lg--dot { width: 7px; height: 7px; background: #4f4a43; box-shadow: 0 0 0 1px #fff; }
+.lg--checkin { background: var(--ok); }
+.lg--ring { background: transparent; border: 2px solid var(--ok); }
+.lg--hit { background: transparent; border: 2px dashed var(--ok); }
 
 /* ---- timeline ---- */
 .tl { display: flex; flex-direction: column; gap: 6px; }

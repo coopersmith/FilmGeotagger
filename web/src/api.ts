@@ -310,6 +310,23 @@ export const usePlaces = (key: string, number: number, version: string) =>
     queryFn: () => request<FramePlaces>(`/api/rolls/${encodeURIComponent(key)}/frames/${number}/places`),
   });
 
+export interface GeoHit {
+  name: string;
+  lat: number;
+  lon: number;
+  kind: string;
+}
+
+/** A place name anywhere in the world, through the local API to OpenStreetMap; needs the network. */
+export const useGeocode = (q: string) =>
+  useQuery({
+    queryKey: ["geocode", q],
+    queryFn: () => request<GeoHit[]>(`/api/geocode?q=${encodeURIComponent(q)}`),
+    enabled: q.trim().length >= 3,
+    staleTime: Infinity,
+    retry: false,
+  });
+
 export const usePlaceSearch = (key: string, q: string) =>
   useQuery({
     queryKey: ["place-search", key, q],
