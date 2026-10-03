@@ -51,7 +51,7 @@ def atlas_for(r, use_atlas: bool, ep):
     return [a for a, k in zip(cand, ok) if k], vecs[ok]
 
 
-def solve_v2(r, verdicts=True, use_atlas=False, ep=None, ap=None, place_min=0.6, readings=None, layers=False):
+def solve_v2(r, verdicts=True, use_atlas=False, ep=None, ap=None, place_min=0.6, readings=None, layers=False, q_min=0.6):
     ep = ep or evmod.EvidenceParams()
     c = cache()
     fv = c.get([f.key for f in r.frames])
@@ -62,7 +62,7 @@ def solve_v2(r, verdicts=True, use_atlas=False, ep=None, ap=None, place_min=0.6,
         readings = verdicts                  # readings come from the verifier's clues: no verdicts, no readings
     if readings:
         from filmgeo.align.readings import from_verdicts
-        evmod.add_readings(ev, from_verdicts(r.verdicts, r.pool, offline=True))
+        ev = evmod.add_readings(ev, from_verdicts(r.verdicts, r.pool, offline=True))
     facts = dataclasses.replace(r.facts, frames={})
     n = len(r.frames)
     vd = r.verdicts if verdicts else {}
@@ -73,7 +73,7 @@ def solve_v2(r, verdicts=True, use_atlas=False, ep=None, ap=None, place_min=0.6,
     model = inputs.build()
     sol = solve(model)
     place(sol, [p for p in r.trail if p.source != "user_facts"], {})
-    locate(model, sol, place_min=place_min)
+    locate(model, sol, place_min=place_min, q_min=q_min)
     return model, sol, ev
 
 

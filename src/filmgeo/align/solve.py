@@ -226,9 +226,40 @@ def _assign_times(model: RollModel, path: list[int], intervals: list[tuple[datet
     return times
 
 
+def posterior_path(model: RollModel, post: np.ndarray) -> list[int]:
+    """The monotone path that collects the most posterior mass, frame by frame.
+
+    Viterbi returns the single likeliest joint assignment, and a single assignment favours
+    whatever is *peaked*: one visit whose photo matches at even odds outbids the forty other
+    visits that share the other half between them, and six frames each chasing their own
+    look-alike day can out-vote three verified anchors. The posterior adds the forty up. This
+    path maximises the sum of the per-frame marginals over the transitions the model allows,
+    so each frame sits where the weight of *all* consistent explanations puts it, and the
+    order of the roll still holds.
+    """
+    n, S = post.shape
+    allowed = np.isfinite(model.transitions)
+    score = np.where(np.isfinite(model.emissions[0]), post[0], -np.inf)
+    back = np.zeros((n, S), dtype=np.int64)
+    for i in range(1, n):
+        cand = np.where(allowed, score[:, None], -np.inf)
+        back[i] = np.argmax(cand, axis=0)
+        best = cand[back[i], np.arange(S)]
+        score = np.where(np.isfinite(model.emissions[i]), best + post[i], -np.inf)
+    if not np.isfinite(score.max()):
+        return viterbi(model)[0]
+    path = [int(np.argmax(score))]
+    for i in range(n - 1, 0, -1):
+        path.append(int(back[i, path[-1]]))
+    path.reverse()
+    return path
+
+
 def solve(model: RollModel) -> Solution:
     path, score = viterbi(model)
     post = forward_backward(model)
+    if model.evidence is not None and model.params.decode == "posterior":
+        path = posterior_path(model, post)
     intervals = _intervals(model, path, post)
     times = _assign_times(model, path, intervals)
     out_js = model.outside

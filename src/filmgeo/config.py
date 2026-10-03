@@ -39,3 +39,17 @@ KNOWN_CAMERAS = ("Contax T2", "Leica M7", "Mamiya 7II")
 # keyword list beside the user's own, and the same facts live in `<roll>/filmgeo.json`.
 # `filmgeo write --provenance` or FILMGEO_PROVENANCE=1 writes them.
 PROVENANCE_KEYWORDS = os.environ.get("FILMGEO_PROVENANCE", "0") in ("1", "true", "yes")
+
+# The alignment engine. "v2" (COO-177) reads the camera roll as an index of *places* first —
+# nearest photos in the window and in the all-time atlas vote for where a frame was, names
+# read off the frame are looked up, recorded visits join the timeline — and the monotone
+# solve then decides when. "v1" is the first engine: similarity to one event's best photo,
+# and a location only where verification anchored the frame. Kept for comparison.
+ENGINE = os.environ.get("FILMGEO_ENGINE", "v2")
+
+# The all-time place atlas (`filmgeo embed --atlas`): photos from every place in the library as
+# extra voters for *where*. Measured OFF (docs/v2-findings.md): every place the reviewed rolls
+# missed had library photos from other years, but the frames that lack a photo in the window
+# are the generic ones — water, ferns, a sign — and SigLIP ties those to a look-alike 60 km
+# away as readily as to the place; at every reach the score was unchanged or worse.
+ATLAS = os.environ.get("FILMGEO_ATLAS", "0") in ("1", "true", "yes")

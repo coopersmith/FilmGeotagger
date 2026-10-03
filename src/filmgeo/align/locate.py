@@ -18,10 +18,12 @@ from filmgeo.align.solve import Solution
 from filmgeo.events import haversine_m
 
 PLACE_MIN = 0.6          # (vote quality x posterior mass) a place needs before it is written as the location
+Q_MIN = 0.6              # and the frame's vote must be worth this much: best photo about 0.79 similar, or a name read off it
 SAME_PLACE_M = 300.0
 
 
-def locate(model: RollModel, solution: Solution, pinned: set[int] | None = None, place_min: float = PLACE_MIN) -> Solution:
+def locate(model: RollModel, solution: Solution, pinned: set[int] | None = None, place_min: float = PLACE_MIN,
+           q_min: float = Q_MIN) -> Solution:
     """Set lat/lon, `location_source = "visual"`, `place_confidence` and `place_uuid` where the photos decide."""
     ev = model.evidence
     if ev is None:
@@ -59,12 +61,13 @@ def locate(model: RollModel, solution: Solution, pinned: set[int] | None = None,
             mine = ev.photos[c[2]]
             if mine.lat is not None and haversine_m((mine.lat, mine.lon), (photo.lat, photo.lon)) <= SAME_PLACE_M:
                 photo = mine
-        # The posterior says how the states' offers divide; whether the offers mean anything is
-        # the frame's own q — a frame whose nearest photo is a look-alike has places to offer
-        # and no reason to believe them. Both must hold before a pin is written.
-        mass *= ev.frames[i].q
-        a.place_confidence = mass
-        if mass >= place_min:
+        # The posterior says how the offers divide — and the order of the roll can crowd it
+        # onto one stretch of the timeline whatever the frame looks like. Whether the offers
+        # mean anything is the frame's own q: a frame whose nearest photo is a look-alike has a
+        # place to offer and no reason to believe it (two frames shot on walks between bursts
+        # of phone photos were pinned 5 km off at 0.98 this way). Both must hold for a pin.
+        a.place_confidence = mass * ev.frames[i].q
+        if mass >= place_min and ev.frames[i].q >= q_min:
             a.lat, a.lon = photo.lat, photo.lon
             a.location, a.clusters = "ok", []
             if photo.uuid.startswith(READING_PREFIX):       # a name read off the frame, not a photo

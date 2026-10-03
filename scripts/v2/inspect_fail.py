@@ -6,7 +6,7 @@ from run_v2 import run
 from filmgeo.align.evidence import EvidenceParams
 from filmgeo.events import haversine_m
 verdicts = "--claude" in sys.argv
-res, detail = run("", quiet=True, verdicts=verdicts, use_atlas="--atlas" in sys.argv, ep=EvidenceParams())
+res, detail = run("", quiet=True, verdicts=verdicts, use_atlas="--atlas" in sys.argv, layers="--layers" in sys.argv, ep=EvidenceParams())
 for key, n, x, a, fe in detail:
     if x["tier"] not in ("photo", "hand", "moment"): continue
     tt = datetime.fromisoformat(x["t"])

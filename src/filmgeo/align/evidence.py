@@ -49,22 +49,32 @@ class EvidenceParams:
     # 0.80-0.85 and 5/14 below 0.80.
     q_centre: float = 0.775
     q_slope: float = 35.0
-    # Support of a state = the vote for its place, scaled between `other_visit` (the place,
-    # but none of this visit's photos look like the frame) and 1 (the visit holds the most
-    # similar photo). The scale has to be wide: a matching visit that scored only twice another
-    # day at the same place lost to the cost of one jump in time, and frames whose best photo
-    # sat on the true minute were dated days away.
-    other_visit: float = 0.15
-    occasion_mode: str = "best"    # see FrameEvidence.in_event
-    stay_discount: float = 0.6     # at the place between two bursts of photos there: nothing was photographed
-    offtrail_discount: float = 0.6 # at a place the phone did not record this time, reachable inside a gap
-    visit_weight: float = 0.5      # at a recorded stop there (a check-in, a timeline visit) with no photos of it
-    # What a state with nothing to offer is worth to a frame that does resemble its photos:
-    # emissions are (1 - q) * floor + q * support, never below this.
-    epsilon: float = 0.003
+    # Which visit to a place. Every state at the place is supported by the place's whole vote —
+    # a frame is likelier where more of the timeline was spent, and a place visited once must
+    # not outbid one visited forty times just because its vote has nobody to be shared with
+    # (measured: a restaurant with 7% of a frame's vote and one visit drew in six frames shot
+    # at a house with 92% and forty). What tells the visits apart is whose photos look most
+    # like the frame, and that is worth what it is measured to be worth: the best-looking
+    # visit is the true one for about 9 frames in 10 when its photo is above 0.84 cosine and
+    # about 1 in 2 below — and for frames at a much-visited house, none of six (`alpha`, set
+    # conservatively at the low end). So among a place's N visits the support is
+    #     vote x (alpha x N x share + (1 - alpha)),
+    # share being a soft-max over the visits' best photos at `tau_occasion` (0.015: the
+    # temperature at which the share given to the best visit matches how often it is right).
+    # The best visit then holds about alpha of the place's posterior however many others there
+    # are — fifty "same place, another day" states cannot outweigh it by number — and when the
+    # roll's order forbids it, the others share what is left on equal terms.
+    alpha_lo: float = 0.3
+    alpha_hi: float = 0.9
+    alpha_centre: float = 0.84
+    alpha_slope: float = 50.0
+    tau_occasion: float = 0.015
+    stay_discount: float = 0.6     # a silent stay at the place against a visit that was photographed or recorded
+    offtrail: float = 0.5          # what an atlas photo's vote keeps for a place with no visit in the window (a name read off the frame keeps all)
+    min_mass: float = 0.02         # hypotheses with less of the vote than this are ignored
     speed_kmh: float = 60.0        # how far from the trail a gap can reach
     reach_slack_m: float = 2000.0
-    atlas_reach_m: float = 150_000.0   # atlas photos farther than this from every window photo are not candidates
+    atlas_reach_m: float = 25_000.0    # atlas photos farther than this from every window photo are not candidates
 
 
 @dataclass
@@ -76,6 +86,8 @@ class Hypothesis:
     mass: float                    # share of the frame's vote within `radius_m`
     best: int                      # index into `Evidence.photos` of the most similar member
     in_window: bool                # some member is a photo of the window (the place is on the trail)
+    photo_mass: float = 0.0        # the part of `mass` cast by photos of the window: these can tell visits apart
+    read_mass: float = 0.0         # the part cast by a name read off the frame: no look-alike risk, and no visit preferred
 
 
 @dataclass
@@ -88,6 +100,8 @@ class FrameEvidence:
     event: np.ndarray              # (K,) event id in the window, -1 for atlas photos
     q: float                       # how much the vote is worth at all
     places: list[Hypothesis] = field(default_factory=list)
+    event_best: np.ndarray | None = None       # (n_events,) the best similarity to a photo of each event
+    event_best_idx: np.ndarray | None = None   # (n_events,) and which photo that is
 
     def near(self, lat: float, lon: float, radius_m: float) -> tuple[float, int | None]:
         """Vote share within `radius_m` of a spot, and the most similar photo there."""
@@ -98,25 +112,6 @@ class FrameEvidence:
         if not m.any():
             return 0.0, None
         return float(self.w[m].sum()), int(self.idx[np.argmax(m)])      # idx is similarity-sorted: first hit is best
-
-    def in_event(self, e: int, mode: str = "best") -> tuple[float, int | None]:
-        """How much the frame looks like the photos of one event, and the most similar of them.
-
-        "best": the event's most similar photo against the frame's most similar photo overall
-        (1.0 for the event that holds it) — a burst of ten middling photos must not outvote one
-        that matches. "share": the event's share of the vote.
-        """
-        m = self.event == e
-        if not m.any():
-            return 0.0, None
-        k = int(np.argmax(m))
-        if mode != "best":
-            return float(self.w[m].sum()), int(self.idx[k])
-        # Against the best photo *of the window*: an atlas photo of the same spot from another
-        # year may be the nearest of all, and says nothing about which visit this was.
-        inwin = self.event >= 0
-        ref = self.w[int(np.argmax(inwin))]
-        return float(self.w[k] / ref), int(self.idx[k])
 
 
 @dataclass
@@ -131,11 +126,17 @@ class Evidence:
         return len(self.photos) - self.n_pool
 
 
+def alpha_of(best_sim: float, p: EvidenceParams) -> float:
+    """P(the visit whose photo looks most like the frame is the true visit), from how similar that photo is."""
+    return p.alpha_lo + (p.alpha_hi - p.alpha_lo) / (1.0 + math.exp(-p.alpha_slope * (best_sim - p.alpha_centre)))
+
+
 def quality(top_sim: float, p: EvidenceParams) -> float:
     return 1.0 / (1.0 + math.exp(-p.q_slope * (top_sim - p.q_centre)))
 
 
-def _hypotheses(fe: FrameEvidence, n_pool: int, radius_m: float) -> list[Hypothesis]:
+def _hypotheses(fe: FrameEvidence, n_pool: int, radius_m: float, n_real: int | None = None) -> list[Hypothesis]:
+    """Group the voters by place, heaviest first. `n_real` is where the photos end and the readings begin."""
     out: list[Hypothesis] = []
     taken = np.isnan(fe.lat)
     for k in range(len(fe.idx)):
@@ -145,7 +146,10 @@ def _hypotheses(fe: FrameEvidence, n_pool: int, radius_m: float) -> list[Hypothe
         free = ~taken
         d[free] = haversine_many(fe.lat[k], fe.lon[k], fe.lat[free], fe.lon[free])
         m = d <= radius_m
-        out.append(Hypothesis(float(fe.lat[k]), float(fe.lon[k]), float(fe.w[m].sum()), int(fe.idx[k]), bool((fe.idx[m] < n_pool).any())))
+        inwin = m & (fe.event >= 0)
+        read = m & np.array([i >= n_real for i in fe.idx]) if n_real is not None else np.zeros(len(m), dtype=bool)
+        out.append(Hypothesis(float(fe.lat[k]), float(fe.lon[k]), float(fe.w[m].sum()), int(fe.idx[k]), bool(inwin.any()),
+                              float(fe.w[inwin].sum()), float(fe.w[read].sum())))
         taken |= m
     out.sort(key=lambda h: -h.mass)
     return out
@@ -168,29 +172,44 @@ READING_PREFIX = "reading:"
 
 
 def add_readings(ev: Evidence, readings: list) -> Evidence:
-    """Fold places read off the frames (`align.readings`) into the vote.
+    """A copy of the evidence with places read off the frames (`align.readings`) folded into the vote.
 
     A reading enters its frame's list as one more voter with the reading's confidence as its
     weight — the photos keep the rest — standing at the named place, belonging to no event.
     The frame's vote is then worth at least that confidence: a sign is evidence even when not
-    one photo resembles the frame.
+    one photo resembles the frame. The input is left untouched, so a re-solve under different
+    verdicts starts from the photos alone again.
     """
+    import copy
     from datetime import datetime, timezone
 
+    if not readings:
+        return ev
+    out = Evidence(list(ev.photos), ev.n_pool, list(ev.frames), ev.params)
+    n_real = len(ev.photos)
     for r in readings:
-        if not (0 <= r.frame < len(ev.frames)):
+        if not (0 <= r.frame < len(out.frames)):
             continue
-        fe = ev.frames[r.frame]
-        ev.photos.append(Asset(f"{READING_PREFIX}{r.kind}:{r.name}", r.name, datetime(1970, 1, 1, tzinfo=timezone.utc), None, r.lat, r.lon))
+        fe = copy.copy(out.frames[r.frame])
+        out.photos.append(Asset(f"{READING_PREFIX}{r.kind}:{r.name}", r.name, datetime(1970, 1, 1, tzinfo=timezone.utc), None, r.lat, r.lon))
         c = r.confidence
-        fe.idx = np.append(fe.idx, len(ev.photos) - 1)
+        fe.idx = np.append(fe.idx, len(out.photos) - 1)
         fe.w = np.append(fe.w * (1 - c), c)
         fe.sims = np.append(fe.sims, 0.0)
         fe.lat, fe.lon = np.append(fe.lat, r.lat), np.append(fe.lon, r.lon)
         fe.event = np.append(fe.event, -1)
         fe.q = 1 - (1 - fe.q) * (1 - c)
-        fe.places = _hypotheses(fe, ev.n_pool, ev.params.radius_m)
-    return ev
+        fe.places = _hypotheses(fe, out.n_pool, out.params.radius_m, n_real)
+        out.frames[r.frame] = fe
+    return out
+
+
+def atlas_candidates(assets: list[Asset], pool: list[Asset], cached: set[str] | dict, reach_m: float) -> list[Asset]:
+    """Every embedded, located phone photo outside the window that the window's trail could reach."""
+    inpool = {a.uuid for a in pool}
+    cand = [a for a in assets if a.uuid in cached and a.uuid not in inpool and a.lat is not None and not a.is_scan
+            and "/scopes/syndication/" not in (a.derivative or "")]
+    return reachable_atlas(pool, cand, reach_m)
 
 
 def build(frame_vecs: np.ndarray, pool: list[Asset], pool_vecs: np.ndarray, event_ids: list[int],
@@ -204,6 +223,8 @@ def build(frame_vecs: np.ndarray, pool: list[Asset], pool_vecs: np.ndarray, even
     lon = np.array([a.lon if a.lon is not None else np.nan for a in photos], dtype=float)
     ev = np.concatenate([np.asarray(event_ids, dtype=int), np.full(len(photos) - len(pool), -1, dtype=int)])
     sims = frame_vecs @ vecs.T
+    ev_pool = np.asarray(event_ids, dtype=int)
+    n_events = int(ev_pool.max()) + 1 if len(ev_pool) else 0
     frames = []
     for i in range(sims.shape[0]):
         k = min(p.k, sims.shape[1])
@@ -214,5 +235,85 @@ def build(frame_vecs: np.ndarray, pool: list[Asset], pool_vecs: np.ndarray, even
         w /= w.sum()
         fe = FrameEvidence(top, w, s, lat[top], lon[top], ev[top], quality(float(s[0]), p))
         fe.places = _hypotheses(fe, len(pool), p.radius_m)
+        fe.event_best = np.full(n_events, -1.0)
+        np.maximum.at(fe.event_best, ev_pool, sims[i, : len(pool)])
+        order = np.argsort(sims[i, : len(pool)])                     # ascending: the last write per event is its best
+        fe.event_best_idx = np.zeros(n_events, dtype=int)
+        fe.event_best_idx[ev_pool[order]] = order
         frames.append(fe)
     return Evidence(photos, len(pool), frames, p)
+
+
+def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np.ndarray, radius: np.ndarray,
+                  event: np.ndarray, is_event: np.ndarray, is_stay: np.ndarray, is_visit: np.ndarray, is_gap: np.ndarray,
+                  reachable) -> tuple[np.ndarray, dict[int, tuple]]:
+    """How much each state is supported as the place and time of one frame, and by which photo.
+
+    The states are given as arrays (`lat`/`lon` nan where a state has no place, `event` -1 where
+    it is not an event). For each place the frame's nearest photos point to:
+
+    * if the window's timeline was ever there — events, silent stays, recorded visits within
+      reach of the spot — each of them is supported by the place's vote, and the events
+      further by how much their own photos resemble the frame (see `EvidenceParams`);
+    * if it was never there, the vote goes to every gap from which the place can be reached
+      (`reachable(state index, lat, lon)`).
+
+    A state keeps the best support any hypothesis gives it. Returns (support per state,
+    state -> (lat, lon, photo index, vote share, photo is of the state's own event)).
+    """
+    S = len(lat)
+    support = np.zeros(S)
+    choice: dict[int, tuple] = {}
+    located = ~np.isnan(lat)
+
+    def offer(j: int, value: float, c: tuple) -> None:
+        if value > support[j]:
+            support[j] = value
+            choice[j] = c
+
+    for h in fe.places:
+        if h.mass < p.min_mass:
+            break
+        d = np.full(S, np.inf)
+        d[located] = haversine_many(h.lat, h.lon, lat[located], lon[located])
+        hosts = d <= radius
+        if hosts.any():
+            ev_ids = np.unique(event[hosts & is_event])
+            n = len(ev_ids) + int((hosts & is_visit).sum()) + p.stay_discount * int((hosts & is_stay).sum())
+            alpha, share = 0.0, {}
+            if len(ev_ids):
+                best = fe.event_best[ev_ids]
+                alpha = alpha_of(float(best.max()), p)
+                w = np.exp((best - best.max()) / p.tau_occasion)
+                share = dict(zip(ev_ids.tolist(), (w / w.sum()).tolist()))
+            # What the window's own photos cast can tell the visits apart; what a sign or an
+            # atlas photo casts cannot — it says the place, and every visit to it is as good.
+            other = h.mass - h.photo_mass
+            near_h = np.zeros(len(fe.idx), dtype=bool)
+            ok = ~np.isnan(fe.lat)
+            near_h[ok] = haversine_many(h.lat, h.lon, fe.lat[ok], fe.lon[ok]) <= p.radius_m
+            for j in np.where(hosts)[0]:
+                if is_event[j]:
+                    e = int(event[j])
+                    # The photo that speaks for this state: the visit's own most similar photo
+                    # *at this place* — an event that wanders is hosted by its nearest end.
+                    mine = near_h & (fe.event == e)
+                    photo, own = (int(fe.idx[int(np.argmax(mine))]), True) if mine.any() else (h.best, False)
+                    offer(j, h.photo_mass * (alpha * n * share[e] + (1 - alpha)) + other, (h.lat, h.lon, photo, h.mass, own))
+                else:
+                    value = h.photo_mass * (1 - alpha) + other
+                    offer(j, value if is_visit[j] else value * p.stay_discount, (h.lat, h.lon, h.best, h.mass, False))
+        else:
+            # Nowhere on the window's timeline: any gap from which the place can be reached. A
+            # name read off the frame keeps its whole vote; a photo from another year is a
+            # look-alike risk and keeps `offtrail` of it.
+            value = h.read_mass + (h.mass - h.read_mass) * p.offtrail
+            for j in np.where(is_gap & ~is_visit)[0]:
+                if value > support[j] and reachable(j, h.lat, h.lon):
+                    offer(j, value, (h.lat, h.lon, h.best, h.mass, False))
+    # Events whose photos carry no GPS can only be recognised by those photos.
+    for j in np.where(is_event & ~located)[0]:
+        e = int(event[j])
+        w = math.exp((fe.event_best[e] - fe.event_best.max()) / p.tau_occasion)
+        offer(j, alpha_of(float(fe.event_best[e]), p) * w, (float("nan"), float("nan"), int(fe.event_best_idx[e]), 0.0, True))
+    return support, choice

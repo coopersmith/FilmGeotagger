@@ -122,6 +122,9 @@ class AlignParams:
     # -inf, so a user lock that contradicts a group still solves (the group loses, visibly)
     # instead of leaving no path. log-odds of about 400:1 against splitting an outing across days.
     outing_day_penalty: float = 6.0
+    # v2: which path is the proposal — "posterior" (most posterior mass, see solve.posterior_path)
+    # or "viterbi" (the single likeliest assignment, the first engine's).
+    decode: str = "posterior"
     # Frame place facts: how far a state's location may be from the stated place.
     place_radius_m: float = 2000.0
 
@@ -366,20 +369,31 @@ def _rank(s: State) -> tuple:
 # Emissions
 
 
-def _event_support(s: State, fe, p, spread_m: float) -> tuple[float, tuple | None]:
-    """How well a frame fits an event: its nearest photos' vote for the event's place, and for
-    the event's own photos. A visit that holds the similar photos gets the whole vote; another
-    visit to the same place gets the place share only."""
-    occ, occ_best = fe.in_event(s.event, p.occasion_mode)
-    if s.has_location:
-        place, place_best = fe.near(s.lat, s.lon, max(p.radius_m, spread_m + 100.0))
-    else:
-        place, place_best = occ, occ_best                 # an event with no GPS: only its own photos speak for it
-    support = place * (p.other_visit + (1 - p.other_visit) * occ)
-    best = occ_best if occ_best is not None else place_best
-    if best is None:
-        return 0.0, None
-    return support, (s.lat, s.lon, best, place, occ_best is not None)
+def _supports(states: list[State], events: list[Event], n_frames: int, evidence: Evidence, choices: dict | None) -> np.ndarray:
+    """(n_frames, S) support of every state for every frame from the place evidence; fills `choices`."""
+    from filmgeo.align.evidence import place_support
+
+    p = evidence.params
+    spread = {e.index: e.spread_m for e in events}
+    S = len(states)
+    lat = np.array([s.lat if s.has_location else np.nan for s in states], dtype=float)
+    lon = np.array([s.lon if s.has_location else np.nan for s in states], dtype=float)
+    is_event = np.array([s.kind == "event" for s in states])
+    is_gap = np.array([s.kind == "gap" for s in states])
+    is_visit = np.array([s.kind == "gap" and s.visit for s in states])
+    is_stay = np.array([s.kind == "gap" and s.stay and not s.visit for s in states])
+    event = np.array([s.event if s.kind == "event" and s.event is not None else -1 for s in states], dtype=int)
+    radius = np.array([max(p.radius_m, spread.get(s.event, 0.0) + 100.0) if s.kind == "event" else (p.radius_m if s.kind == "gap" else 0.0)
+                       for s in states])
+    lat[~(is_event | is_gap)] = np.nan            # anchors are not hosts: their event is
+    out = np.zeros((n_frames, S))
+    for i in range(n_frames):
+        out[i], choice = place_support(evidence.frames[i], p, lat, lon, radius, event, is_event, is_stay, is_visit, is_gap,
+                                       lambda j, la, lo: _reachable(states[j], la, lo, p))
+        if choices is not None:
+            for j, c in choice.items():
+                choices[(i, j)] = (states[j].lat, states[j].lon, c[2], c[3], c[4])
+    return out
 
 
 def _reachable(s: State, lat: float, lon: float, p) -> bool:
@@ -391,28 +405,6 @@ def _reachable(s: State, lat: float, lon: float, p) -> bool:
     if a is None or b is None:
         return haversine_m(a or b, (lat, lon)) <= budget
     return haversine_m(a, (lat, lon)) + haversine_m((lat, lon), b) <= budget + haversine_m(a, b)
-
-
-def _gap_support(s: State, fe, p) -> tuple[float, tuple | None]:
-    """A gap holds no photos, so nothing speaks for the occasion; what speaks is the place.
-    Between two bursts at one place that place is offered (a stay); any gap also offers the
-    frame's own best place if it can be reached from where the trail was."""
-    best_support, best_choice = 0.0, None
-    if s.stay:
-        place, photo = fe.near(s.lat, s.lon, p.radius_m)
-        if photo is not None:
-            # A recorded stop is worth more than a silent stay: the phone *was* there then.
-            best_support = place * (p.visit_weight if s.visit else p.other_visit * p.stay_discount)
-            best_choice = (s.lat, s.lon, photo, place, False)
-    for h in fe.places:
-        support = h.mass * p.other_visit * p.offtrail_discount
-        if support <= best_support:
-            break                                           # hypotheses are sorted by mass
-        if _reachable(s, h.lat, h.lon, p):
-            best_support, best_choice = support, (h.lat, h.lon, h.best, h.mass, False)
-            break
-    return best_support, best_choice
-
 
 
 def _event_hours(events: list[Event]) -> dict[int, set[int]]:
@@ -471,29 +463,25 @@ def build_emissions(
     hours = _event_hours(events)
 
     log_gap, log_out = math.log(params.gap_prob), math.log(params.outside_prob)
-    spread = {e.index: e.spread_m for e in events}
+    support = None
+    if evidence is not None:
+        support = _supports(states, events, n_frames, evidence, choices)
     for j, s in enumerate(states):
         if s.kind == "gap":
             em[:, j] = log_gap
-            if evidence is not None:
+            if support is not None:
                 for i in range(n_frames):
-                    fe = evidence.frames[i]
-                    support, choice = _gap_support(s, fe, evidence.params)
-                    if choice is not None and choices is not None:
-                        choices[(i, j)] = choice
-                    em[i, j] = math.log(max(evidence.params.epsilon, (1 - fe.q) * params.gap_prob + fe.q * support))
+                    q = evidence.frames[i].q
+                    em[i, j] = math.log((1 - q) * params.gap_prob + q * support[i, j])
         elif s.kind == "outside":
             em[:, j] = log_out
         elif s.kind == "event":
             for i in range(n_frames):
-                if evidence is not None:
-                    fe = evidence.frames[i]
-                    support, choice = _event_support(s, fe, evidence.params, spread.get(s.event, 0.0))
-                    if choice is not None and choices is not None:
-                        choices[(i, j)] = choice
+                if support is not None:
                     # A frame that resembles nothing (q -> 0) is as likely in any event as the
                     # first engine's floor said; one that resembles its photos is where they are.
-                    p = max(evidence.params.epsilon, (1 - fe.q) * params.event_floor + fe.q * support)
+                    q = evidence.frames[i].q
+                    p = (1 - q) * params.event_floor + q * support[i, j]
                 else:
                     p = max(params.event_floor, best.get((i, s.event), 0.0))
                 v = math.log(p)
@@ -509,25 +497,33 @@ def build_emissions(
     # (c's exact instant) takes q plus a small bonus for being exact, and every other state
     # for that frame is scaled by 1-q. Similarity is not added to the anchor: Claude saw the
     # image, and similarity is already in the event floor it competes with.
+    #
+    # "At least q" is measured from the top of the frame's own scale: with place evidence a
+    # state can score well above log(1) (the visit whose photo matches, among N), and a verdict
+    # worth q against the first engine's best case of 1 must be worth q against that too —
+    # otherwise a look-alike on another day outbids the photo a verifier chose by eye.
     by_frame: dict[int, list[Anchor]] = {}
     for a in anchors:
         by_frame.setdefault(a.frame, []).append(a)
+    top: dict[int, float] = {}
     for i, frame_anchors in by_frame.items():
         q_max = max(min(a.confidence, 1 - 1e-6) for a in frame_anchors)
         keep_events = {a.event for a in frame_anchors}
         scale = math.log(1 - q_max)
+        finite = em[i][np.isfinite(em[i])]
+        top[i] = max(0.0, float(finite.max())) if len(finite) else 0.0
         for j, s in enumerate(states):
             if s.kind == "anchor":
                 continue
             if s.kind == "event" and s.event in keep_events:
                 q = max(min(a.confidence, 1 - 1e-6) for a in frame_anchors if a.event == s.event)
-                em[i, j] = max(em[i, j], math.log(q))
+                em[i, j] = max(em[i, j], top[i] + math.log(q))
             elif np.isfinite(em[i, j]):
                 em[i, j] += scale
     for j, s in enumerate(states):
         if s.kind == "anchor":
             a = next(x for x in anchors if x.frame == s.frame and x.uuid == s.uuid and x.time == s.t_lo)
-            em[s.frame, j] = math.log(max(a.confidence, 1e-6)) + params.anchor_bonus
+            em[s.frame, j] = top.get(s.frame, 0.0) + math.log(max(a.confidence, 1e-6)) + params.anchor_bonus
 
     # Locked anchors prune every other state for their frame.
     for j, s in enumerate(states):
