@@ -12,6 +12,7 @@ case). The eval case also carries the ground truth so the report can show it.
 from __future__ import annotations
 
 import json
+import dataclasses
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -32,7 +33,7 @@ from filmgeo.embed.cache import VectorCache
 from filmgeo.geo import place
 from filmgeo.photos import library
 from filmgeo.photos.library import Asset
-from filmgeo.signals.base import Constraint, TrailPoint, Window, collect, effective_window
+from filmgeo.signals.base import Constraint, TrailPoint, Window, collect, effective_window, frame_bounds
 from filmgeo.signals.health_routes import HEALTH_DIR, HealthRoutes
 from filmgeo.signals.nfc_log import CACHE as NFC_CACHE, NfcLog
 from filmgeo.signals import swarm as swarm_mod
@@ -268,10 +269,21 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     in_pool = {a.uuid for a in pool}
     frozen = {k: o.snapshot for k, o in overrides.frames.items()
               if o.confirmed and o.snapshot and 1 <= k <= n and not (facts.frames.get(k) and facts.frames[k].skip)}
+    if frozen:
+        # A frozen frame's own "same day as" / "moments after" links have done their work — the
+        # confirmed time is their outcome — and must not be read again against it: a chain of
+        # links between frames none of which was dated did nothing in the solve the user
+        # confirmed, and would contradict the confirmed times once the snapshots date them.
+        constraints = [dataclasses.replace(c, same_day_as=None, same_time_as=None)
+                       if c.scope == "frame" and c.frame in frozen and (c.same_day_as or c.same_time_as) else c for c in constraints]
+        hard = frame_bounds([c for c in constraints if c.source != "confirmed"]
+                            + [Constraint("frame", "pick", frame=a.frame + 1, t_lo=a.time, t_hi=a.time + timedelta(seconds=1)) for a in anchors if a.locked],
+                            n, window)
     for k, snap in frozen.items():
         if o_anchor(overrides, k) or snap.get("anchor") in in_pool:
             continue
-        t = datetime.fromisoformat(snap["time"])
+        lo, hi = hard[k - 1]
+        t = min(max(datetime.fromisoformat(snap["time"]), lo), max(lo, hi - timedelta(seconds=1)))    # inside what facts and picks allow
         constraints.append(Constraint("frame", "confirmed", frame=k, t_lo=t, t_hi=t + timedelta(seconds=1), note="confirmed"))
     clues = clues_from_verdicts(verdicts, n)
     same_outing = outings.same_outing_pairs(n) if outings else set()
@@ -299,6 +311,7 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
             a.location_source = snap.get("location_source") or a.location_source
         if snap.get("tzoffset") is not None:
             a.tzoffset = snap["tzoffset"]
+        a.time = datetime.fromisoformat(snap["time"])       # to the second: it is what was confirmed, and perhaps written
     # A frame confirmed just now (or before snapshots existed, with no saved solve to adopt)
     # is frozen as it stands in this solve — the one the user is looking at.
     for k, o in overrides.frames.items():
@@ -341,10 +354,16 @@ def release_contradicted(overrides: RollOverrides, constraints: list[Constraint]
             continue
         t = datetime.fromisoformat(o.snapshot["time"])
         lo, hi = bounds[k - 1]
-        if not (lo <= t <= hi):
+        if not (lo - FROZEN_SLACK <= t <= hi + FROZEN_SLACK):
             o.confirmed, o.snapshot = False, None
             released.append(k)
     return released
+
+
+# A confirmed time may sit a few seconds the wrong side of a neighbour's photo: frames squeezed
+# between two anchors on one instant were spaced backwards from it, and that is what was
+# confirmed and written. Within this much it is held as it is, not released.
+FROZEN_SLACK = timedelta(minutes=1)
 
 
 def o_anchor(overrides: RollOverrides, number: int) -> str | None:
