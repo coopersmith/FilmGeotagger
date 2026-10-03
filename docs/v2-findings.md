@@ -191,6 +191,9 @@ reports as "placed, not dated" rather than guessing. On the two of them that hav
 * **`filmgeo verify` skips frames the engine is already sure of** (`--sure 0.6`): on the
   reviewed rolls an unverified frame dated at 0.6 or more was on the right occasion 50 times
   in 51, and 66 of the 137 frames reach it.
+* **Loading a roll scanned the whole library once per check-in.** `PhotosTrail.offset_at` walked
+  141,000 assets, with a filename regex each, for every check-in, route sample and NFC tap: 29
+  seconds to open a roll with 134 check-ins in its window. Indexed once: 2 seconds.
 * The vector cache saves in chunks, atomically, and survives an unreadable chunk.
 * `FILMGEO_ENGINE=v1` runs the first engine, for comparison.
 
