@@ -395,11 +395,17 @@ def verify(
     only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
     widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
     inside: bool = typer.Option(False, help="second round: only the unanchored frames, with photos from inside each frame's interval"),
+    sure: float = typer.Option(0.6, help="skip frames the engine already dates with at least this confidence and places (0 = verify every frame)"),
     model: str = typer.Option(None, help="Claude model id"),
     alias: str = typer.Option(None, "--as", help="name the facts/verdicts/assignments files differently (a second window for one roll)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="spend the money without asking"),
 ) -> None:
     """Ask Claude which candidate, if any, shows each frame's occasion. Costs money — says how much first.
+
+    Frames the engine is already sure of are left out (`--sure`): measured on the reviewed
+    rolls, an unverified frame the engine dates at 0.6 confidence or more was on the right
+    occasion 46 times in 46 (docs/v2-findings.md), so verifying it buys nothing. What
+    verification is for is the rest — and the places it reads off them (signs, landmarks).
 
     `--inside` is the iterate step: after a first round and an align, the anchored frames bound
     every other frame's interval, and the photos inside that interval are the only ones it
@@ -414,7 +420,12 @@ def verify(
     _require_readable(r.frames[0].path, r.pool[0].derivative)
     existing = r.verdicts
     todo = []
+    skipped_sure = []
     for f, a in zip(r.frames[: limit or None], r.solution.assignments):
+        if sure and r.evidence is not None and f.number not in existing and a.source == "interpolated" \
+                and a.confidence >= sure and a.location == "ok":
+            skipped_sure.append(f.number)
+            continue
         if inside:
             if a.source in ("anchored", "locked", "skipped"):
                 continue
@@ -433,6 +444,9 @@ def verify(
     est = 0.035 * n_images / 6        # $0.035/frame at k=6 on claude-opus-5 (M1), linear in images shown
     console.print(f"[bold]{r.key}[/]: {len(todo)} frames, {n_images} candidates{' inside their intervals' if inside else ''} on {model} "
                   f"— about [bold]${est:.2f}[/] ({len(existing)} already verified)")
+    if skipped_sure:
+        console.print(f"  not asked about frame{'s' if len(skipped_sure) > 1 else ''} {', '.join(map(str, skipped_sure))}: already dated at "
+                      f"{sure:.1f}+ confidence and placed by the camera roll (--sure 0 to verify them too)")
     if not todo:
         return
     if not yes and not typer.confirm("Spend it?"):

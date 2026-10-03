@@ -50,18 +50,24 @@ class EvidenceParams:
     q_centre: float = 0.775
     q_slope: float = 35.0
     # Which visit to a place. Every state at the place is supported by the place's vote: the
-    # visit whose own photo looks most like the frame in full, the others by `other_visit` of
-    # it, graded between by a soft-max at the vote's own temperature. Two cleverer forms were
-    # built and measured against this one (docs/v2-findings.md) — dealing the vote out among
-    # the visits, and scaling the matching visit by the number it competes with times its
-    # measured reliability — and neither beat it on place, day or occasion; both let a run of
-    # look-alike days out-vote verified anchors. What this form cannot give is a posterior
-    # that means "which visit": forty other visits at 0.15 outweigh the one that matches. So
-    # the occasion confidence of an unverified frame is not read off the posterior but
-    # computed from what was measured (`occasion_confidence`): the best-looking visit is the
-    # true one for about 9 frames in 10 when its photo is above 0.84 cosine, 1 in 2 below, and
-    # for frames at a much-visited house none of six — hence the low end at 0.3.
-    other_visit: float = 0.15
+    # visit whose own photo looks most like the frame in full, the others by `other` of it,
+    # graded between by a soft-max at the vote's own temperature. `other` is not a constant:
+    # it is `other_visit` times how *unreliable* the best-looking visit is at this similarity
+    # (1 - alpha). The best-looking visit is the true one for about 9 frames in 10 when its
+    # photo is above 0.84 cosine, 1 in 2 below, and — for frames at a much-visited house —
+    # none of six, hence the low end at 0.3. So a strong match leaves another day at the same
+    # place almost nothing (0.025) and holds against the roll's order; a merely place-level
+    # match leaves it 0.175 and yields. Measured against a constant 0.15: the engine's day
+    # accuracy with no verification went from 66 to 75 of 81.
+    #
+    # Two cleverer forms were built and measured against this one (docs/v2-findings.md) —
+    # dealing the vote out among the visits, and scaling the matching visit by the number it
+    # competes with — and neither beat it; both let a run of look-alike days out-vote verified
+    # anchors. What this form cannot give is a posterior that means "which visit": forty other
+    # visits at a few percent each outweigh the one that matches. So the occasion confidence
+    # of an unverified frame is not read off the posterior but computed from what was measured
+    # (`occasion_confidence`).
+    other_visit: float = 0.25
     alpha_lo: float = 0.3
     alpha_hi: float = 0.9
     alpha_centre: float = 0.84
@@ -279,12 +285,17 @@ def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np
         if hosts.any():
             ev_ids = np.unique(event[hosts & is_event])
             ratio: dict[int, float] = {}
+            rho = p.other_visit * (1 - p.alpha_lo)
             if len(ev_ids):
                 best = fe.event_best[ev_ids]
                 ratio = dict(zip(ev_ids.tolist(), np.exp((best - best.max()) / p.tau).tolist()))
-            # What the window's own photos cast can tell the visits apart; what a sign or an
-            # atlas photo casts cannot — it says the place, and every visit to it is as good.
-            other = h.mass - h.photo_mass
+                rho = p.other_visit * (1 - alpha_of(float(best.max()), p))
+            # Which visit: the window's own photos of the place say, when the frame's vote
+            # holds any — and a sign read off the frame, agreeing on the place, goes with
+            # them rather than watering them down. With none (a place known only by its name,
+            # or by an atlas photo), every visit to it is as good as another.
+            look = h.mass if (h.photo_mass > 0 and len(ev_ids)) else 0.0
+            other = h.mass - look
             near_h = np.zeros(len(fe.idx), dtype=bool)
             ok = ~np.isnan(fe.lat)
             near_h[ok] = haversine_many(h.lat, h.lon, fe.lat[ok], fe.lon[ok]) <= p.radius_m
@@ -295,15 +306,15 @@ def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np
                     # *at this place* — an event that wanders is hosted by its nearest end.
                     mine = near_h & (fe.event == e)
                     photo, own = (int(fe.idx[int(np.argmax(mine))]), True) if mine.any() else (h.best, False)
-                    term = p.other_visit + (1 - p.other_visit) * ratio[e]
-                    offer(j, h.photo_mass * term + other, (h.lat, h.lon, photo, h.mass, own))
+                    term = rho + (1 - rho) * ratio[e]
+                    offer(j, look * term + other, (h.lat, h.lon, photo, h.mass, own))
                 else:
-                    value = h.photo_mass * p.other_visit + other
+                    value = look * rho + other
                     offer(j, value if is_visit[j] else value * p.stay_discount, (h.lat, h.lon, h.best, h.mass, False))
             # And the silent time from which the place can be reached: the phone comes out at
             # the drive-in forty minutes after the frame of its sign; the stop on the way home
             # was photographed another day. Worth what a silent stay there is worth.
-            value = (h.photo_mass * p.other_visit + other) * p.stay_discount
+            value = (look * rho + other) * p.stay_discount
             for j in np.where(is_gap & ~hosts & ~is_visit)[0]:
                 if value > support[j] and reachable(j, h.lat, h.lon):
                     offer(j, value, (h.lat, h.lon, h.best, h.mass, False))
@@ -319,7 +330,8 @@ def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np
     for j in np.where(is_event & ~located)[0]:
         e = int(event[j])
         w = math.exp((fe.event_best[e] - fe.event_best.max()) / p.tau)
-        offer(j, p.other_visit + (1 - p.other_visit) * w, (float("nan"), float("nan"), int(fe.event_best_idx[e]), 0.0, True))
+        rho = p.other_visit * (1 - alpha_of(float(fe.event_best.max()), p))
+        offer(j, rho + (1 - rho) * w, (float("nan"), float("nan"), int(fe.event_best_idx[e]), 0.0, True))
     return support, choice
 
 

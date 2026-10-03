@@ -472,6 +472,7 @@ dependencies = [
     { name = "numpy" },
     { name = "osxphotos" },
     { name = "pillow" },
+    { name = "pyobjc-framework-mapkit", marker = "sys_platform == 'darwin'" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -509,6 +510,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=11" },
     { name = "pydantic", marker = "extra == 'api'", specifier = ">=2" },
     { name = "pydantic", marker = "extra == 'verify'", specifier = ">=2.13.5" },
+    { name = "pyobjc-framework-mapkit", marker = "sys_platform == 'darwin'", specifier = ">=12" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "rich", specifier = ">=13" },
     { name = "timm", marker = "extra == 'embed'", specifier = ">=1.0.29" },
@@ -1801,6 +1803,27 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/1e/c01b817a43cdf9c55e9c635e7579fdfcce3bb92ee2d4eb85305c5a5713e6/pyobjc_framework_fsevents-12.2.2-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:7009d5a2242b89f261bfe388cf09f69257ebce3244bdd4a48548d24f909b6bc1", size = 13517, upload-time = "2026-08-11T19:35:50.08Z" },
     { url = "https://files.pythonhosted.org/packages/39/d7/ce8d15c0ceefc03963ab336d8b8c174ced03f4321dfc11391d066392fe82/pyobjc_framework_fsevents-12.2.2-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:5544b994c825538bd236177b680f0e11dcdeb34fc3abb46d4373e610acd0b518", size = 13066, upload-time = "2026-08-11T19:35:50.83Z" },
     { url = "https://files.pythonhosted.org/packages/11/2b/4309db4234728176a021dce345452ce921b43da4f217fc79827e8d37b0e7/pyobjc_framework_fsevents-12.2.2-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:234fe522358efeefb9e25c2fbe8f00a9d2734429003ea75f91e005f98b91ffe5", size = 13539, upload-time = "2026-08-11T19:35:51.577Z" },
+]
+
+[[package]]
+name = "pyobjc-framework-mapkit"
+version = "12.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyobjc-core" },
+    { name = "pyobjc-framework-cocoa" },
+    { name = "pyobjc-framework-corelocation" },
+    { name = "pyobjc-framework-quartz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/96/81/ab741218f72e0c9445a85a977c5cb88e474af61c449714127c0a9a7a6945/pyobjc_framework_mapkit-12.2.2.tar.gz", hash = "sha256:65d5303d4c76f36fc671ada11eef2c3f69a0ac35a7dc08d3c3ce3564695e9d9a", size = 80201, upload-time = "2026-08-11T19:44:50.77Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/a2/e1fb8e39cb07a7d3414b22009c9a5effe424d107a29aa96438009ec405c0/pyobjc_framework_mapkit-12.2.2-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:ee6046f743ebfa3359aa5c1ac3b63daa98b07de4e6d903e1ffcc5272b6ba1417", size = 22860, upload-time = "2026-08-11T19:37:53.604Z" },
+    { url = "https://files.pythonhosted.org/packages/14/91/8e15a2f9a95f20bcdfae70741b550208e894a9046c06992b6019ca930c2c/pyobjc_framework_mapkit-12.2.2-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:10859ae6ba1e72762368391c8fbda4d34fb5ba44b6a9fa72b13a8b85b078adde", size = 22894, upload-time = "2026-08-11T19:37:54.429Z" },
+    { url = "https://files.pythonhosted.org/packages/87/5b/f425e188d788bc26364413f3cdb162dd188bd0bba956ca8fcd22db6d49c9/pyobjc_framework_mapkit-12.2.2-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:bda64df569934eec6baeb6ea81a1dd46e12e731a4b7bd981195510677e93846e", size = 23066, upload-time = "2026-08-11T19:37:55.227Z" },
+    { url = "https://files.pythonhosted.org/packages/60/c5/97c727814813a3ba9d0c240c36a78c32f150ee4e2c0fab63ff8a0ac61692/pyobjc_framework_mapkit-12.2.2-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:16c7aa2a335b593bd938c0004d0d801a19d405b027ab874a2ea9a9f51804418e", size = 22920, upload-time = "2026-08-11T19:37:55.993Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/d5/58889ede94fd0df37c63c1f5b8fdaf60d043a93190449b94fbd05e560247/pyobjc_framework_mapkit-12.2.2-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:cab6f91311f98ad949553c6d46d7793affe229f6ca93253a3465af179e5e883f", size = 23130, upload-time = "2026-08-11T19:37:56.95Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/e4/e7fa2d9a6171d03bc5c293c1b0a40e0a3b4ac7bc41bf695f56b1ae2cd4db/pyobjc_framework_mapkit-12.2.2-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:1f0fd0a7c91056b3cf254d48361b141770cd0d2bf112d2b59a936af6201a41d2", size = 22918, upload-time = "2026-08-11T19:37:57.897Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/e7/b6208b511ad577de035ac6f4165c757e3269cb30eab559d1f14ef89e2a6a/pyobjc_framework_mapkit-12.2.2-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:83b5afc909c5b5906f7ca13941f686b433ec01735cd158c53307c7eb704f875e", size = 23128, upload-time = "2026-08-11T19:37:58.662Z" },
 ]
 
 [[package]]
