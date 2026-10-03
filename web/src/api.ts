@@ -78,7 +78,10 @@ export interface Frame {
   lat: number | null;
   lon: number | null;
   location: Location;
-  location_source: string | null;
+  location_source: string | null;   // anchor | user | trail | interpolated | visual (its nearest photos' place) | reading (a name read off the frame)
+  place_confidence?: number | null;
+  place_uuid?: string | null;
+  place_name?: string | null;
   clusters: Cluster[];
   truth: string | null;
   locked: boolean;

@@ -125,7 +125,11 @@ export function FrameDetail({ rollKey, frame, frames, roll, onSelect }: { rollKe
           <dd>
             {frame.location === "ok" && (
               <span className="mono">
-                {frame.lat!.toFixed(5)}, {frame.lon!.toFixed(5)} <span className="muted">({frame.location_source})</span>
+                {frame.lat!.toFixed(5)}, {frame.lon!.toFixed(5)}{" "}
+                <span className="muted">
+                  ({frame.location_source === "visual" ? "where its nearest phone photos were taken" : frame.location_source === "reading" ? `read off the frame: ${frame.place_name ?? "a sign"}` : frame.location_source}
+                  {frame.place_confidence != null && (frame.location_source === "visual" || frame.location_source === "reading") ? ` · ${frame.place_confidence.toFixed(2)}` : ""})
+                </span>
               </span>
             )}
             {frame.location === "ambiguous" && (

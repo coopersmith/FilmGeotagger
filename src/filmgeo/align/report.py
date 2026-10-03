@@ -122,7 +122,9 @@ def write(path: Path, r: RollRun) -> Path:
         parts.append(f"<div class=bar><i class={_conf_class(a)} style='width:{100*a.confidence:.0f}%'></i></div>")
         parts.append(f"<small>confidence {a.confidence:.2f}" + (f" · outside {a.outside_mass:.2f}" if a.outside_mass > 0.05 else "") + "</small><br>")
         if a.location == "ok":
-            parts.append(f"<span class=badge>location {a.location_source}</span> {a.lat:.5f}, {a.lon:.5f}")
+            how = a.location_source + (f" “{html.escape(a.place_name)}”" if a.place_name else "") \
+                + (f" {a.place_confidence:.2f}" if a.place_confidence is not None and a.location_source in ("visual", "reading") else "")
+            parts.append(f"<span class=badge>location {how}</span> {a.lat:.5f}, {a.lon:.5f}")
         elif a.location == "ambiguous":
             opts = "; ".join(f"{html.escape(c.label) + ' ' if c.label else ''}{c.lat:.4f},{c.lon:.4f} ×{c.count}" for c in a.clusters[:4])
             parts.append(f"<span class='badge warn'>location ambiguous</span> {opts}")

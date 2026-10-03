@@ -314,3 +314,42 @@ def test_embed_cache_saves_in_chunks_and_survives_an_unreadable_chunk(tmp_path, 
     assert (v[2] == 0).all() and (v[3] == 0).all() and v[4, 0] == 3.0
     again = cache_mod.VectorCache("x")
     assert again.keys == keys and not list(tmp_path.glob("x/*.tmp.npy"))
+
+
+# -- through the pipeline ----------------------------------------------------------------------
+
+
+def test_solve_run_carries_place_fields_and_freezes_what_is_confirmed(world):
+    from filmgeo.align import pipeline
+    from filmgeo.align.overrides import RollOverrides
+    from filmgeo.align.pipeline import FrameRef
+    from filmgeo.signals.user_facts import RollFacts
+
+    frame_vecs = np.stack([photo_vec(1, 10, 0.6), photo_vec(0), photo_vec(0, 8, 0.6)])
+    frames = [FrameRef(i + 1, f"f{i + 1}", None) for i in range(3)]
+    sims = frame_vecs @ world["vecs"].T
+    e = evidence_mod.build(frame_vecs, world["pool"], world["vecs"], world["event_ids"])
+    facts, ov = RollFacts("r"), RollOverrides("r")
+
+    def solve_(overrides, evidence=e):
+        return pipeline.solve_run("r", "r", frames, facts, WINDOW, "test", world["pool"], world["events"], world["event_ids"], sims,
+                                  {}, {}, [], None, overrides, evidence)
+
+    r = solve_(ov)
+    j = pipeline.to_json(r)
+    assert j["engine"] == "v2" and j["atlas"] == 0 and j["readings"] == [] and j["visits"] == 0
+    f2 = j["frames"][1]
+    assert f2["location_source"] == "visual" and f2["place_confidence"] > 0.9 and f2["place_uuid"].startswith("H") and f2["place_name"] is None
+    assert pipeline.resolve(r).evidence is e                                 # a re-solve keeps the evidence it was built with
+
+    # Confirm frame 2 as it stands; then re-solve with the first engine: it does not move.
+    ov.frame(2).confirmed = True
+    r2 = solve_(ov)
+    snap = ov.frames[2].snapshot
+    assert snap["time"] == r.solution.assignments[1].time.isoformat() and snap["location_source"] == "visual"
+    r3 = solve_(ov, evidence=None)
+    a = r3.solution.assignments[1]
+    assert a.time.isoformat() == snap["time"] and (a.lat, a.lon) == (snap["lat"], snap["lon"]) and a.location_source == "visual"
+    assert pipeline.to_json(r3)["engine"] == "v1" and pipeline.to_json(r3)["frames"][1]["status"] == "confirmed"
+    # The unconfirmed neighbour is the first engine's again: no photo-placed pin without verification.
+    assert r3.solution.assignments[2].location_source != "visual"
