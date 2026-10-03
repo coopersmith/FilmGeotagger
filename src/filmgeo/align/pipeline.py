@@ -12,6 +12,7 @@ case). The eval case also carries the ground truth so the report can show it.
 from __future__ import annotations
 
 import json
+import copy
 import dataclasses
 import threading
 from dataclasses import asdict, dataclass, field
@@ -257,7 +258,10 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     points from an earlier facts state; they are replaced by the current facts' own.
     """
     n = len(frames)
-    overrides = overrides or RollOverrides(key)
+    # A copy: this function releases and snapshots confirmations, and a solve that then fails
+    # must leave the caller's overrides — the cached run's, in the review server — as they were.
+    # The run it returns carries the copy; that is what gets saved.
+    overrides = copy.deepcopy(overrides) if overrides is not None else RollOverrides(key)
     constraints = UserFacts(facts).constraints()
     anchors = anchors_from_verdicts(verdicts, pool, event_ids, sims)
     for o in overrides.frames.values():
@@ -271,18 +275,20 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     frozen = {k: o.snapshot for k, o in overrides.frames.items()
               if o.confirmed and o.snapshot and 1 <= k <= n and not (facts.frames.get(k) and facts.frames[k].skip)}
     if frozen:
-        # A frozen frame's own "same day as" / "moments after" links have done their work — the
-        # confirmed time is their outcome — and must not be read again against it: a chain of
-        # links between frames none of which was dated did nothing in the solve the user
-        # confirmed, and would contradict the confirmed times once the snapshots date them.
-        constraints = [dataclasses.replace(c, same_day_as=None, same_time_as=None)
-                       if c.scope == "frame" and c.frame in frozen and (c.same_day_as or c.same_time_as) else c for c in constraints]
+        # A link between two frozen frames has done its work — the confirmed times are its
+        # outcome — and must not be read again against them: a chain of links between frames
+        # none of which was dated did nothing in the solve the user confirmed, and would
+        # contradict the confirmed times once the snapshots date them. A link to a frame that
+        # is still free stands, whichever of the two holds it.
+        constraints = [dataclasses.replace(c, same_day_as=None if c.same_day_as in frozen else c.same_day_as,
+                                           same_time_as=None if c.same_time_as in frozen else c.same_time_as)
+                       if c.scope == "frame" and c.frame in frozen else c for c in constraints]
         hard = frame_bounds([c for c in constraints if c.source != "confirmed"]
                             + [Constraint("frame", "pick", frame=a.frame + 1, t_lo=a.time, t_hi=a.time + timedelta(seconds=1)) for a in anchors if a.locked],
                             n, window)
     for k, snap in frozen.items():
-        if o_anchor(overrides, k) or snap.get("anchor") in in_pool:
-            continue
+        if (o_anchor(overrides, k) or snap.get("anchor")) in in_pool:
+            continue                              # held on its photo, as a locked anchor
         lo, hi = hard[k - 1]
         t = min(max(datetime.fromisoformat(snap["time"]), lo), max(lo, hi - timedelta(seconds=1)))    # inside what facts and picks allow
         constraints.append(Constraint("frame", "confirmed", frame=k, t_lo=t, t_hi=t + timedelta(seconds=1), note="confirmed"))
@@ -307,11 +313,15 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     locate.apply(model, solution, pinned=set(pins) | {k - 1 for k in frozen})
     for k, snap in frozen.items():
         a = solution.assignments[k - 1]
-        if k - 1 not in pins and snap.get("lat") is not None:
-            a.lat, a.lon, a.location, a.clusters = snap["lat"], snap["lon"], "ok", []
-            a.location_source = snap.get("location_source") or a.location_source
-        if snap.get("tzoffset") is not None:
-            a.tzoffset = snap["tzoffset"]
+        if k - 1 not in pins:
+            if snap.get("lat") is not None:
+                a.lat, a.lon, a.location, a.clusters = snap["lat"], snap["lon"], "ok", []
+                a.location_source = snap.get("location_source") or a.location_source
+            else:                                 # confirmed with no place: a later solve must not give it one
+                a.lat = a.lon = None
+                a.location, a.location_source = ("ambiguous" if a.clusters else "none"), None
+            a.place_confidence = a.place_uuid = a.place_name = None
+        a.tzoffset = snap.get("tzoffset")
         a.time = datetime.fromisoformat(snap["time"])       # to the second: it is what was confirmed, and perhaps written
     # A frame confirmed just now (or before snapshots existed, with no saved solve to adopt)
     # is frozen as it stands in this solve — the one the user is looking at.
@@ -351,7 +361,7 @@ def release_contradicted(overrides: RollOverrides, constraints: list[Constraint]
     bounds = frame_bounds(hard, n, window)
     released = []
     for k, o in overrides.frames.items():
-        if not (o.confirmed and o.snapshot and 1 <= k <= n) or o.anchor:
+        if not (o.confirmed and o.snapshot and 1 <= k <= n) or (o.anchor and o.anchor in by_uuid):
             continue
         t = datetime.fromisoformat(o.snapshot["time"])
         lo, hi = bounds[k - 1]

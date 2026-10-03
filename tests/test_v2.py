@@ -345,9 +345,10 @@ def test_solve_run_carries_place_fields_and_freezes_what_is_confirmed(world):
     # Confirm frame 2 as it stands; then re-solve with the first engine: it does not move.
     ov.frame(2).confirmed = True
     r2 = solve_(ov)
-    snap = ov.frames[2].snapshot
+    assert ov.frames[2].snapshot is None                                     # the caller's overrides are never touched
+    snap = r2.overrides.frames[2].snapshot
     assert snap["time"] == r.solution.assignments[1].time.isoformat() and snap["location_source"] == "visual"
-    r3 = solve_(ov, evidence=None)
+    r3 = solve_(r2.overrides, evidence=None)
     a = r3.solution.assignments[1]
     assert a.time.isoformat() == snap["time"] and (a.lat, a.lon) == (snap["lat"], snap["lon"]) and a.location_source == "visual"
     assert pipeline.to_json(r3)["engine"] == "v1" and pipeline.to_json(r3)["frames"][1]["status"] == "confirmed"

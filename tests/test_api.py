@@ -652,3 +652,28 @@ def test_an_empty_place_name_clears_it(client):
     assert f[3]["fact"]["place_name"] == "Sakonnet Point"
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"lat": 41.6, "lon": -71.1, "place_name": ""}).json())
     assert f[3]["fact"]["place_name"] is None and f[3]["lat"] == 41.6
+
+
+def test_a_failed_solve_leaves_confirmations_as_they_were(client, store):
+    client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [3]})
+    before = RollOverrides.load(KEY, store.overrides_dir).frames[3].snapshot
+    # Facts that contradict the confirmed frame *and* each other: the solve refuses.
+    bad = {"frames": {"2": {"when": at(9, 12, 0).isoformat()[:16].replace("T", " ")}, "4": {"when": at(2, 9, 0).isoformat()[:16].replace("T", " ")}}}
+    r = client.put(f"/api/rolls/{KEY}/facts", json=bad)
+    assert r.status_code in (409, 422)
+    live = store.runs[KEY].overrides.frames[3]
+    assert live.confirmed and live.snapshot == before                      # the cached run was not touched
+    assert RollOverrides.load(KEY, store.overrides_dir).frames[3].snapshot == before
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    assert f[3]["status"] == "confirmed" and f[3]["time"] == before["time"]
+
+
+def test_a_frame_confirmed_without_a_place_is_not_given_one_later(client, store):
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    n = next((k for k, x in f.items() if x["lat"] is None and x["source"] == "interpolated"), None)
+    if n is None:
+        pytest.skip("every frame of the fixture roll has a location")
+    client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [n]})
+    other = 2 if n != 2 else 4
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/{other}/assign", json={"lat": 41.0, "lon": -71.0}).json())
+    assert f[n]["status"] == "confirmed" and f[n]["lat"] is None

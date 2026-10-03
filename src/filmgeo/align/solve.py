@@ -278,9 +278,10 @@ def solve(model: RollModel) -> Solution:
             em = m.emissions.copy()
             changed = False
             for i, d in decided.items():
-                if not d.decided or i in m.skipped or any(s.kind == "anchor" and s.frame == i for s in m.states):
-                    continue                              # a verified or picked photo already says where
-                keep = locate.hosts(m, i, d)
+                if not d.decided or i in m.skipped:
+                    continue
+                # Its own anchors stay open: a verified photo may still be where it is.
+                keep = locate.hosts(m, i, d) + [j for j, s in enumerate(m.states) if s.kind == "anchor" and s.frame == i]
                 row = np.full(em.shape[1], NEG)
                 row[keep] = em[i, keep]
                 if np.isfinite(row).any() and not np.array_equal(np.isfinite(row), np.isfinite(em[i])):
@@ -298,11 +299,11 @@ def solve(model: RollModel) -> Solution:
         sure = locate.decide(base, None)
         held = narrowed(base, sure)
         if held is None:
-            held, sure = base, {}
+            held, sure = base, {i: dataclasses.replace(d, decided=False) for i, d in sure.items()}
         places = locate.decide(held, forward_backward(held), sure)
         final = narrowed(base, places)
         if final is None:
-            final, places = held, {i: d for i, d in places.items() if i in sure}
+            final, places = held, sure                    # exactly what the solved model was held to
         model = final
         path, _ = viterbi(model)
         post = forward_backward(model)

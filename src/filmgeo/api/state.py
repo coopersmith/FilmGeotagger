@@ -155,8 +155,9 @@ class Store:
         adopted = overrides.adopt_assignments(self.assignments_dir / f"{key}.json")
         run = self.loader(origin, alias=key, assets=self.assets, facts=facts, overrides=overrides, widen=widen)
         self.runs[key] = run
-        if adopted or any(o.confirmed and o.snapshot for o in overrides.frames.values()):
-            overrides.save(self.overrides_dir)
+        solved = run.overrides or overrides
+        if adopted or any(o.confirmed and o.snapshot for o in solved.frames.values()):
+            solved.save(self.overrides_dir)
         pipeline.save(run, self.assignments_dir)
         return run
 
@@ -190,8 +191,8 @@ class Store:
                     overrides.save(self.overrides_dir)
                 return self._load(key, facts=facts, overrides=overrides)
             facts.save(self.facts_dir)
-            if overrides is not None:
-                overrides.save(self.overrides_dir)
+            if new.overrides is not None:
+                new.overrides.save(self.overrides_dir)      # as solved: with what it released and what it froze
             self.runs[key] = new
             pipeline.save(new, self.assignments_dir)
             return new
