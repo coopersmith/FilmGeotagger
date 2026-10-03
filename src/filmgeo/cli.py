@@ -527,8 +527,14 @@ def embed(
     to: str = typer.Option(None, "--to", help="end of the window (YYYY-MM-DD); default: today"),
     variant: str = typer.Option("siglip", help="siglip | siglip_gray | dinov2"),
     dry_run: bool = typer.Option(False, help="count what would be embedded and stop"),
+    atlas: bool = typer.Option(False, "--atlas", help="embed the all-time place atlas instead of a window: a spread of photos from every place in the library"),
+    cap: int = typer.Option(None, help="--atlas: photos per ~200 m cell (default 16)"),
 ) -> None:
     """Embed the phone photos a window needs and nothing already cached — the incremental cache (COO-138).
+
+    `--atlas` embeds a sample of the whole library by place (COO-177), so a frame can be
+    recognised somewhere the phone stayed in the pocket this month. Tens of thousands of photos
+    the first time (an hour or two), saved as it goes and resumable; incremental afterwards.
 
     Photos derivatives are unreadable from tool-call shells: run this from Terminal.app. With no
     options it embeds everything newer than the newest photo the cache already holds, which is
@@ -549,10 +555,18 @@ def embed(
         cached_dates = [by_uuid[k].date for k in cache.keys if k in by_uuid]
         lo = max(cached_dates) - timedelta(days=1) if cached_dates else min(a.date for a in assets)
     hi = datetime.fromisoformat(to).astimezone() + timedelta(days=1) if to else datetime.now().astimezone()
-    pool = library.candidates(assets, lo, hi)
-    missing = cache.missing([a.uuid for a in pool])
-    console.print(f"{variant}: {len(pool)} candidate photos {lo:%Y-%m-%d} .. {hi:%Y-%m-%d}, [bold]{len(missing)}[/] not yet embedded "
-                  f"({len(cache.keys)} cached in all)")
+    if atlas:
+        pool = library.atlas(assets, cap or library.ATLAS_CAP)
+        # Places near what is already embedded first: the rolls in hand are served soonest.
+        near = {library.place_cell(by_uuid[k].lat, by_uuid[k].lon, 50_000) for k in cache.keys if k in by_uuid and by_uuid[k].lat is not None}
+        pool.sort(key=lambda a: library.place_cell(a.lat, a.lon, 50_000) not in near)
+        missing = cache.missing([a.uuid for a in pool])
+        console.print(f"{variant}: place atlas of {len(pool)} photos, [bold]{len(missing)}[/] not yet embedded ({len(cache.keys)} cached in all)")
+    else:
+        pool = library.candidates(assets, lo, hi)
+        missing = cache.missing([a.uuid for a in pool])
+        console.print(f"{variant}: {len(pool)} candidate photos {lo:%Y-%m-%d} .. {hi:%Y-%m-%d}, [bold]{len(missing)}[/] not yet embedded "
+                      f"({len(cache.keys)} cached in all)")
     if not missing or dry_run:
         return
     _require_readable(by_uuid[missing[0]].derivative)
@@ -561,8 +575,12 @@ def embed(
     name, gray = {"siglip": ("SigLIP", False), "siglip_gray": ("SigLIP", True), "dinov2": ("DINOv2", False)}[variant]
     embedder = getattr(models, name)(grayscale=gray)
     t0 = time.time()
-    with console.status(f"embedding {len(missing)} photos..."):
-        embed_cached(embedder, missing, [by_uuid[u].derivative for u in missing], variant)
+
+    def tick(done: int, total: int) -> None:
+        rate = done / max(1e-9, time.time() - t0)
+        console.print(f"  {done}/{total}  {rate:.1f} photos/s  about {(total - done) / max(rate, 1e-9) / 60:.0f} min left")
+
+    embed_cached(embedder, missing, [by_uuid[u].derivative for u in missing], variant, progress=tick)
     console.print(f"embedded {len(missing)} in {time.time() - t0:.0f}s -> {VectorCache(variant).dir}")
 
 

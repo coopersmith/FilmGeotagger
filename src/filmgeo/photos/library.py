@@ -153,6 +153,46 @@ def candidates(assets: list[Asset], start: datetime, end: datetime, pad_days: in
     return [a for a in assets if lo <= a.date <= hi and not a.is_scan and a.derivative]
 
 
+ATLAS_CELL_M = 200.0
+ATLAS_CAP = 16
+
+
+def place_cell(lat: float, lon: float, cell_m: float = ATLAS_CELL_M) -> tuple[int, int]:
+    """A coarse grid cell, about `cell_m` on a side at any latitude."""
+    import math
+
+    return (round(lat / (cell_m / 111320.0)), round(lon / (cell_m / (111320.0 * max(0.2, math.cos(math.radians(lat)))))))
+
+
+def atlas(assets: list[Asset], cap: int = ATLAS_CAP, cell_m: float = ATLAS_CELL_M) -> list[Asset]:
+    """The all-time place atlas: located phone photos, at most `cap` per ~200 m cell, spread over time.
+
+    A roll's window holds the photos of its weeks; the library holds every place the user has
+    ever photographed. A frame shot somewhere the phone stayed in the pocket *this* month is
+    usually somewhere the phone came out in another (measured, COO-177: the town beach, 86
+    photos since 2020; a farm stand, 75) — so the whole library is the index of what places
+    look like, and the window is only the diary of when. A cell's photos are taken evenly
+    across its history, so every season and year a place was seen in is represented; the cap
+    keeps a home with twelve thousand photos from being most of the index. Messages'
+    syndicated photos are someone else's and are left out.
+    """
+    cells: dict[tuple[int, int], list[Asset]] = {}
+    for a in assets:
+        if a.lat is None or a.lon is None or a.is_scan or not a.derivative or "/scopes/syndication/" in a.derivative:
+            continue
+        cells.setdefault(place_cell(a.lat, a.lon, cell_m), []).append(a)
+    out: list[Asset] = []
+    for members in cells.values():
+        members.sort(key=lambda a: a.date)
+        if len(members) <= cap:
+            out.extend(members)
+        else:
+            step = (len(members) - 1) / (cap - 1)
+            out.extend(members[round(i * step)] for i in range(cap))
+    out.sort(key=lambda a: a.date)
+    return out
+
+
 def phone_times(assets: list[Asset]) -> "np.ndarray":
     """Sorted timestamps of everything that is not a scan — what `Roll.anchored()` tests against."""
     import numpy as np
