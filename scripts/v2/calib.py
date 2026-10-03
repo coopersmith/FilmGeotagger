@@ -7,7 +7,7 @@ from filmgeo.align.evidence import EvidenceParams
 from filmgeo.align.model import AlignParams
 from filmgeo.events import haversine_m
 for label, kw in (("free", dict(verdicts=False)), ("free + readings", dict(verdicts=False, readings=True)), ("Claude + readings", dict(verdicts=True)), ("Claude + readings + layers", dict(verdicts=True, layers=True))):
-    res, detail = run("", quiet=True, q_min=0.6, ep=EvidenceParams(alpha_lo=0.3), ap=AlignParams(decode="posterior"), **kw)
+    res, detail = run("", quiet=True, **kw)
     occ, plc = [], []
     for key, n, x, a, fe in detail:
         if x["tier"] == "photo":

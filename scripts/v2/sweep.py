@@ -79,3 +79,8 @@ if __name__ == "__main__":
             for verdicts, rd, ly in ((False, False, False), (False, True, False), (True, True, False), (True, True, True)):
                 res, _ = run("", quiet=True, verdicts=verdicts, readings=rd, layers=ly, q_min=0.6, ap=AlignParams(decode=dec), ep=EvidenceParams(alpha_lo=alo))
                 line(f"{dec:9s} alpha_lo={alo} claude={verdicts!s:5} readings={rd!s:5} layers={ly!s:5}", res)
+    if which == "form":
+        for form, dec in itertools.product(("ratio", "calibrated"), ("viterbi", "posterior")):
+            for verdicts, rd, ly in ((False, False, False), (False, True, False), (True, True, False), (True, True, True)):
+                res, _ = run("", quiet=True, verdicts=verdicts, readings=rd, layers=ly, ap=AlignParams(decode=dec), ep=EvidenceParams(occasion_form=form))
+                line(f"{form:10s} {dec:9s} claude={verdicts!s:5} readings={rd!s:5} layers={ly!s:5}", res)

@@ -124,7 +124,7 @@ class AlignParams:
     outing_day_penalty: float = 6.0
     # v2: which path is the proposal — "posterior" (most posterior mass, see solve.posterior_path)
     # or "viterbi" (the single likeliest assignment, the first engine's).
-    decode: str = "posterior"
+    decode: str = "viterbi"
     # Frame place facts: how far a state's location may be from the stated place.
     place_radius_m: float = 2000.0
 
@@ -219,8 +219,8 @@ class RollModel:
     bounds: list[tuple[datetime, datetime]] = field(default_factory=list)   # per-frame, from facts
     evidence: "Evidence | None" = None
     # (frame, state) -> where the frame would be if it sat in that state, by its nearest photos:
-    # (state lat, state lon, index into evidence.photos of the photo that says so, vote share,
-    # whether that photo belongs to the state's own event). Absent = no visual say.
+    # (the place's lat, lon, index into evidence.photos of the photo that says so, the place's
+    # vote share, whether that photo belongs to the state's own event). Absent = no visual say.
     choices: dict[tuple[int, int], tuple] = field(default_factory=dict)
 
     @property
@@ -392,7 +392,7 @@ def _supports(states: list[State], events: list[Event], n_frames: int, evidence:
                                        lambda j, la, lo: _reachable(states[j], la, lo, p))
         if choices is not None:
             for j, c in choice.items():
-                choices[(i, j)] = (states[j].lat, states[j].lon, c[2], c[3], c[4])
+                choices[(i, j)] = c
     return out
 
 

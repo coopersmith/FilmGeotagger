@@ -14,7 +14,7 @@ from baseline import score
 from common import OUT, ROLLS, load_run, truth
 from filmgeo.align import evidence as evmod
 from filmgeo.align.checks import RollInputs
-from filmgeo.align.locate import locate
+from filmgeo.align import locate
 from filmgeo.align.model import AlignParams
 from filmgeo.align.pipeline import anchors_from_verdicts, clues_from_verdicts
 from filmgeo.align.solve import solve
@@ -73,7 +73,7 @@ def solve_v2(r, verdicts=True, use_atlas=False, ep=None, ap=None, place_min=0.6,
     model = inputs.build()
     sol = solve(model)
     place(sol, [p for p in r.trail if p.source != "user_facts"], {})
-    locate(model, sol, place_min=place_min, q_min=q_min)
+    locate.apply(model, sol)
     return model, sol, ev
 
 

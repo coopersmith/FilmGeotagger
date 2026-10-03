@@ -49,26 +49,24 @@ class EvidenceParams:
     # 0.80-0.85 and 5/14 below 0.80.
     q_centre: float = 0.775
     q_slope: float = 35.0
-    # Which visit to a place. Every state at the place is supported by the place's whole vote —
-    # a frame is likelier where more of the timeline was spent, and a place visited once must
-    # not outbid one visited forty times just because its vote has nobody to be shared with
-    # (measured: a restaurant with 7% of a frame's vote and one visit drew in six frames shot
-    # at a house with 92% and forty). What tells the visits apart is whose photos look most
-    # like the frame, and that is worth what it is measured to be worth: the best-looking
-    # visit is the true one for about 9 frames in 10 when its photo is above 0.84 cosine and
-    # about 1 in 2 below — and for frames at a much-visited house, none of six (`alpha`, set
-    # conservatively at the low end). So among a place's N visits the support is
-    #     vote x (alpha x N x share + (1 - alpha)),
-    # share being a soft-max over the visits' best photos at `tau_occasion` (0.015: the
-    # temperature at which the share given to the best visit matches how often it is right).
-    # The best visit then holds about alpha of the place's posterior however many others there
-    # are — fifty "same place, another day" states cannot outweigh it by number — and when the
-    # roll's order forbids it, the others share what is left on equal terms.
+    # Which visit to a place. Every state at the place is supported by the place's vote: the
+    # visit whose own photo looks most like the frame in full, the others by `other_visit` of
+    # it, graded between by a soft-max at the vote's own temperature. Two cleverer forms were
+    # built and measured against this one (docs/v2-findings.md) — dealing the vote out among
+    # the visits, and scaling the matching visit by the number it competes with times its
+    # measured reliability — and neither beat it on place, day or occasion; both let a run of
+    # look-alike days out-vote verified anchors. What this form cannot give is a posterior
+    # that means "which visit": forty other visits at 0.15 outweigh the one that matches. So
+    # the occasion confidence of an unverified frame is not read off the posterior but
+    # computed from what was measured (`occasion_confidence`): the best-looking visit is the
+    # true one for about 9 frames in 10 when its photo is above 0.84 cosine, 1 in 2 below, and
+    # for frames at a much-visited house none of six — hence the low end at 0.3.
+    other_visit: float = 0.15
     alpha_lo: float = 0.3
     alpha_hi: float = 0.9
     alpha_centre: float = 0.84
     alpha_slope: float = 50.0
-    tau_occasion: float = 0.015
+    tau_occasion: float = 0.015    # soft-max over a place's visits for the confidence: at this temperature the share matches how often the best visit is right
     stay_discount: float = 0.6     # a silent stay at the place against a visit that was photographed or recorded
     offtrail: float = 0.5          # what an atlas photo's vote keeps for a place with no visit in the window (a name read off the frame keeps all)
     min_mass: float = 0.02         # hypotheses with less of the vote than this are ignored
@@ -253,8 +251,9 @@ def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np
     it is not an event). For each place the frame's nearest photos point to:
 
     * if the window's timeline was ever there — events, silent stays, recorded visits within
-      reach of the spot — each of them is supported by the place's vote, and the events
-      further by how much their own photos resemble the frame (see `EvidenceParams`);
+      reach of the spot — each of them is supported by the place's vote, the events according
+      to how much their own photos resemble the frame (see `EvidenceParams`), and so, at a
+      discount, is any other gap from which the place can be reached;
     * if it was never there, the vote goes to every gap from which the place can be reached
       (`reachable(state index, lat, lon)`).
 
@@ -279,13 +278,10 @@ def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np
         hosts = d <= radius
         if hosts.any():
             ev_ids = np.unique(event[hosts & is_event])
-            n = len(ev_ids) + int((hosts & is_visit).sum()) + p.stay_discount * int((hosts & is_stay).sum())
-            alpha, share = 0.0, {}
+            ratio: dict[int, float] = {}
             if len(ev_ids):
                 best = fe.event_best[ev_ids]
-                alpha = alpha_of(float(best.max()), p)
-                w = np.exp((best - best.max()) / p.tau_occasion)
-                share = dict(zip(ev_ids.tolist(), (w / w.sum()).tolist()))
+                ratio = dict(zip(ev_ids.tolist(), np.exp((best - best.max()) / p.tau).tolist()))
             # What the window's own photos cast can tell the visits apart; what a sign or an
             # atlas photo casts cannot — it says the place, and every visit to it is as good.
             other = h.mass - h.photo_mass
@@ -299,10 +295,18 @@ def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np
                     # *at this place* — an event that wanders is hosted by its nearest end.
                     mine = near_h & (fe.event == e)
                     photo, own = (int(fe.idx[int(np.argmax(mine))]), True) if mine.any() else (h.best, False)
-                    offer(j, h.photo_mass * (alpha * n * share[e] + (1 - alpha)) + other, (h.lat, h.lon, photo, h.mass, own))
+                    term = p.other_visit + (1 - p.other_visit) * ratio[e]
+                    offer(j, h.photo_mass * term + other, (h.lat, h.lon, photo, h.mass, own))
                 else:
-                    value = h.photo_mass * (1 - alpha) + other
+                    value = h.photo_mass * p.other_visit + other
                     offer(j, value if is_visit[j] else value * p.stay_discount, (h.lat, h.lon, h.best, h.mass, False))
+            # And the silent time from which the place can be reached: the phone comes out at
+            # the drive-in forty minutes after the frame of its sign; the stop on the way home
+            # was photographed another day. Worth what a silent stay there is worth.
+            value = (h.photo_mass * p.other_visit + other) * p.stay_discount
+            for j in np.where(is_gap & ~hosts & ~is_visit)[0]:
+                if value > support[j] and reachable(j, h.lat, h.lon):
+                    offer(j, value, (h.lat, h.lon, h.best, h.mass, False))
         else:
             # Nowhere on the window's timeline: any gap from which the place can be reached. A
             # name read off the frame keeps its whole vote; a photo from another year is a
@@ -314,6 +318,17 @@ def place_support(fe: FrameEvidence, p: EvidenceParams, lat: np.ndarray, lon: np
     # Events whose photos carry no GPS can only be recognised by those photos.
     for j in np.where(is_event & ~located)[0]:
         e = int(event[j])
-        w = math.exp((fe.event_best[e] - fe.event_best.max()) / p.tau_occasion)
-        offer(j, alpha_of(float(fe.event_best[e]), p) * w, (float("nan"), float("nan"), int(fe.event_best_idx[e]), 0.0, True))
+        w = math.exp((fe.event_best[e] - fe.event_best.max()) / p.tau)
+        offer(j, p.other_visit + (1 - p.other_visit) * w, (float("nan"), float("nan"), int(fe.event_best_idx[e]), 0.0, True))
     return support, choice
+
+
+def occasion_confidence(fe: FrameEvidence, p: EvidenceParams, event: int, rivals: list[int]) -> float:
+    """How sure it is that an unverified frame sitting in `event` belongs to that visit, among `rivals`
+    (the events at the same place, itself included): the measured reliability of the best-looking
+    visit at this similarity, times this visit's share of the look."""
+    ids = np.array(sorted(set(rivals) | {event}), dtype=int)
+    best = fe.event_best[ids]
+    w = np.exp((best - best.max()) / p.tau_occasion)
+    share = float(w[list(ids).index(event)] / w.sum())
+    return alpha_of(float(best.max()), p) * share

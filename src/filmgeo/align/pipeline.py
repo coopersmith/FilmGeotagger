@@ -22,7 +22,7 @@ from filmgeo import eval_set, events as ev, retrieve
 from filmgeo.align.checks import ReverseTest, RollInputs, WindowCheck, reverse_test, widen as widen_window, window_check
 from filmgeo.align import evidence as evidence_mod, readings as readings_mod, visits as visits_mod
 from filmgeo.align.evidence import Evidence
-from filmgeo.align.locate import locate
+from filmgeo.align import locate
 from filmgeo.align.model import Anchor, FrameClues
 from filmgeo.align.overrides import RollOverrides
 from filmgeo.align.solve import Solution, solve
@@ -277,7 +277,7 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     trail = sorted([p for p in trail if p.source != USER_SOURCE] + UserFacts(facts).trail_points(window), key=lambda p: p.time)
     pins = {k - 1: (f.lat, f.lon) for k, f in facts.frames.items() if f.lat is not None and f.lon is not None and 1 <= k <= n}
     place(solution, trail, pins)
-    locate(model, solution, pinned=set(pins))
+    locate.apply(model, solution, pinned=set(pins))
     rev = reverse_test(inputs, solution)
     check = window_check(model, solution, n_verified=len(verdicts) or None)
     possible = possible_candidates(frames, solution, pool, event_ids, sims)
