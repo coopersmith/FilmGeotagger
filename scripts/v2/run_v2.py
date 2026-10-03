@@ -2,11 +2,9 @@
 against the truth beside the v1 baseline."""
 from __future__ import annotations
 
-import argparse
 import collections
 import dataclasses
 import pickle
-import time
 
 import numpy as np
 
@@ -92,13 +90,5 @@ def run(label, rolls=ROLLS, quiet=False, **kw):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--atlas", action="store_true")
-    args = ap.parse_args()
-    t = time.time()
-    run("v2 free (no Claude), window only", verdicts=False)
-    run("v2 + Claude verdicts, window only", verdicts=True)
-    if args.atlas:
-        run("v2 free (no Claude), with atlas", verdicts=False, use_atlas=True)
-        run("v2 + Claude verdicts, with atlas", verdicts=True, use_atlas=True)
-    print(f"{time.time()-t:.0f}s")
+    run("v2 free (no Claude)", verdicts=False)
+    run("v2 + Claude verdicts + readings", verdicts=True)

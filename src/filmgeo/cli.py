@@ -404,7 +404,7 @@ def verify(
 
     Frames the engine is already sure of are left out (`--sure`): measured on the reviewed
     rolls, an unverified frame the engine dates at 0.6 confidence or more was on the right
-    occasion 46 times in 46 (docs/v2-findings.md), so verifying it buys nothing. What
+    occasion 50 times in 51 (docs/v2-findings.md), so verifying it buys little. What
     verification is for is the rest — and the places it reads off them (signs, landmarks).
 
     `--inside` is the iterate step: after a first round and an align, the anchored frames bound
