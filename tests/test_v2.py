@@ -353,3 +353,15 @@ def test_solve_run_carries_place_fields_and_freezes_what_is_confirmed(world):
     assert pipeline.to_json(r3)["engine"] == "v1" and pipeline.to_json(r3)["frames"][1]["status"] == "confirmed"
     # The unconfirmed neighbour is the first engine's again: no photo-placed pin without verification.
     assert r3.solution.assignments[2].location_source != "visual"
+
+
+def test_mapkit_is_not_asked_from_a_worker_thread():
+    import threading
+
+    from filmgeo.gazetteer import _mapkit
+
+    out = []
+    t = threading.Thread(target=lambda: out.append(_mapkit("Young Family Farm", HOUSE)))
+    t.start()
+    t.join(5)
+    assert out == [None]                     # at once, not after a ten-second wait for a run loop that never turns

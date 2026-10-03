@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import dataclasses
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -484,8 +485,11 @@ def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, asset
     evidence = None
     if config.ENGINE != "v1":
         evidence = build_evidence(fv, pool, pv, event_ids, assets)
-        if lookup:
-            readings_mod.from_verdicts(verdicts, pool)       # fills the gazetteer cache; the solve reads it offline
+        if lookup and threading.current_thread() is threading.main_thread():
+            # Fills the gazetteer cache; the solve reads it offline. Only from the main thread
+            # (a CLI command): the review server solves on worker threads, where MapKit cannot
+            # answer and a network wait has no place — it uses what `verify` and `align` cached.
+            readings_mod.from_verdicts(verdicts, pool)
     return solve_run(key, roll, frames, facts, window, source, pool, events, event_ids, sims, candidates,
                      verdicts, trail, outings, overrides, evidence)
 

@@ -467,6 +467,12 @@ def verify(
                           f"{v.confidence:.2f}  {v.evidence[:70]}")
     p = pipeline.save_verdicts(r.key, out, {"roll": r.key, "model": model, "k": k, "cap": cap})
     console.print(f"{len(out)} verdicts -> {p}")
+    # What the verdicts read off the frames, looked up now (free) so the solver and the review
+    # server find it in the gazetteer's cache.
+    from filmgeo.align import readings as readings_mod
+
+    for rd in readings_mod.from_verdicts(pipeline.load_verdicts(r.key), r.pool):
+        console.print(f"  frame {rd.frame + 1}: read “{rd.text}” -> {rd.name} ({rd.lat:.5f}, {rd.lon:.5f})")
 
 
 @app.command()
@@ -520,6 +526,8 @@ def align(
         table.add_column(col)
     for f, a in zip(r.frames, sol.assignments):
         loc = f"{a.lat:.4f},{a.lon:.4f}" if a.location == "ok" else f"ambiguous ({len(a.clusters)})" if a.location == "ambiguous" else "-"
+        if a.location == "ok" and a.location_source in ("visual", "reading"):
+            loc += f" {a.place_name or a.location_source}" + (f" {a.place_confidence:.2f}" if a.place_confidence is not None else "")
         truth = ""
         if f.truth:
             inside = a.t_lo - timedelta(minutes=2) <= f.truth <= a.t_hi + timedelta(minutes=2)
@@ -530,6 +538,11 @@ def align(
                   + ("[red]doubtful[/] — " if r.check.doubtful else "") + r.check.reason
                   + (" · [red]possibly reverse-wound[/]" if r.reverse.suspect else ""))
     console.print("best days: " + ", ".join(f"{d:%a %-d %b} {m:.1f}" for d, m in r.check.best_days))
+    if r.evidence is not None:
+        placed = sum(a.location == "ok" for a in sol.assignments)
+        console.print(f"engine v2: {placed}/{r.n_frames} placed, {sum(a.location_source in ('visual', 'reading') for a in sol.assignments)} by what they look like or say"
+                      + (f"; read off the frames: {', '.join(f'{x.frame + 1} {x.name}' for x in r.readings)}" if r.readings else "")
+                      + (f"; {len(r.visits)} recorded visits on the timeline" if r.visits else ""))
     jp = pipeline.save(r)
     hp = arep.write(out / f"align_{r.key}.html", r)
     console.print(f"wrote {jp} and {hp}")

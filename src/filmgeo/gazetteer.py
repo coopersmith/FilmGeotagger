@@ -8,7 +8,8 @@ Backends, first that answers:
 
 * **MapKit local search** on macOS (`pyobjc-framework-MapKit`): Apple's points of interest,
   biased to a region. It knows the small businesses OpenStreetMap does not — measured on the
-  reviewed rolls, three signs of three within 160 m, where Nominatim found none.
+  reviewed rolls, three signs of three within 160 m, where Nominatim found none. Main thread
+  only: the CLI asks (`filmgeo verify`, `filmgeo align`); the review server reads the cache.
 * **Nominatim** (`api/geocode.py`) otherwise: towns, landmarks, some businesses.
 
 Only the name and a rough region leave the Mac. Every answer is cached in
@@ -63,6 +64,10 @@ def name_match(query: str, name: str) -> float:
 
 
 def _mapkit(query: str, near: tuple[float, float], span_deg: float = 1.5, timeout: float = 10.0) -> list[Hit] | None:
+    import threading
+
+    if threading.current_thread() is not threading.main_thread():
+        return None            # MapKit answers on the main run loop; from a worker thread the wait would only time out
     try:
         import CoreLocation
         import MapKit
