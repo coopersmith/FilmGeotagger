@@ -24,6 +24,7 @@ from datetime import date, datetime, timedelta
 
 import numpy as np
 
+from filmgeo.align.evidence import Evidence
 from filmgeo.align.model import AlignParams, Anchor, FrameClues, RollModel, build_model
 from filmgeo.align.solve import Solution, null_score, solve
 from filmgeo.events import Event
@@ -45,10 +46,11 @@ class RollInputs:
     same_outing: set[tuple[int, int]] = field(default_factory=set)
     params: AlignParams | None = None
     event_weather: dict[int, str] | None = None
+    evidence: "Evidence | None" = None
 
     def build(self) -> RollModel:
         return build_model(self.window, self.events, self.n_frames, self.anchors, self.sims, self.event_ids,
-                           self.clues, self.constraints, self.same_outing, self.params, self.event_weather)
+                           self.clues, self.constraints, self.same_outing, self.params, self.event_weather, self.evidence)
 
     def reversed(self) -> "RollInputs":
         n = self.n_frames
@@ -65,6 +67,7 @@ class RollInputs:
             same_outing={(flip(b), flip(a)) for a, b in self.same_outing},
             params=self.params,
             event_weather=self.event_weather,
+            evidence=None if self.evidence is None else dataclasses.replace(self.evidence, frames=list(reversed(self.evidence.frames))),
         )
 
 

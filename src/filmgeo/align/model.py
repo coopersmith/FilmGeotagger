@@ -48,6 +48,7 @@ from typing import Literal
 
 import numpy as np
 
+from filmgeo.align.evidence import Evidence
 from filmgeo.events import Event, haversine_m
 from filmgeo.signals.base import SAME_MOMENT, Constraint, Window, frame_bounds
 
@@ -168,6 +169,12 @@ class State:
     side: str | None = None        # outside: "before" | "after"
     occ_lo: datetime | None = None # anchor: the occasion's span — what the verdict actually vouches for
     occ_hi: datetime | None = None
+    stay: bool = False             # gap between two bursts of photos at one place: the place is known, the hour is not
+    # gap: where the trail was before and after, and for how long it is silent — how far a
+    # place off the trail can be and still be reached inside it. (lat, lon) or None per end.
+    reach_from: tuple[float, float] | None = None
+    reach_to: tuple[float, float] | None = None
+    reach_hours: float = 0.0
     before_frame: int | None = None      # event head: open only to frames before this anchored frame
     after_frame: int | None = None       # event tail: open only to frames after this anchored frame
     anchor_time: datetime | None = None  # head/tail: the anchor's instant, which fixes their rank
@@ -205,6 +212,11 @@ class RollModel:
     same_outing: set[tuple[int, int]] = field(default_factory=set)   # consecutive frame pairs
     skipped: set[int] = field(default_factory=set)
     bounds: list[tuple[datetime, datetime]] = field(default_factory=list)   # per-frame, from facts
+    evidence: "Evidence | None" = None
+    # (frame, state) -> where the frame would be if it sat in that state, by its nearest photos:
+    # (state lat, state lon, index into evidence.photos of the photo that says so, vote share,
+    # whether that photo belongs to the state's own event). Absent = no visual say.
+    choices: dict[tuple[int, int], tuple] = field(default_factory=dict)
 
     @property
     def outside(self) -> list[int]:
@@ -244,7 +256,10 @@ def _day_pieces(lo: datetime, hi: datetime) -> list[tuple[datetime, datetime]]:
     return out or [(lo, hi)]
 
 
-def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> list[State]:
+STAY_RADIUS_M = 300.0
+
+
+def build_states(window: Window, events: list[Event], anchors: list[Anchor], stay_radius_m: float = STAY_RADIUS_M) -> list[State]:
     """One state per event, one gap state per calendar day between events, anchors with heads and tails.
 
     Gaps are cut at midnight so a state never spans two days: that keeps the joint-day
@@ -254,16 +269,28 @@ def build_states(window: Window, events: list[Event], anchors: list[Anchor]) -> 
     """
     states: list[State] = []
     prev_end = window.start
+    prev_loc: tuple[float, float] | None = None
+
+    def gaps(lo: datetime, hi: datetime, a: tuple[float, float] | None, b: tuple[float, float] | None) -> list[State]:
+        # Silent between two bursts of photos at one place: a *stay* — the frame is there, the
+        # hour unknown. Either way the gap remembers where the trail was on both sides.
+        stay = a is not None and b is not None and haversine_m(a, b) <= stay_radius_m
+        lat, lon = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) if stay else (None, None)
+        hours = (hi - lo).total_seconds() / 3600.0
+        return [State("gap", x, y, lat, lon, stay=stay, reach_from=a, reach_to=b, reach_hours=hours) for x, y in _day_pieces(lo, hi)]
+
     for e in events:
         lo, hi = max(e.start, window.start), min(e.end, window.end)
         if hi < lo:
             continue
+        loc = (e.lat, e.lon) if e.lat is not None else None
         if lo > prev_end:
-            states.extend(State("gap", a, b) for a, b in _day_pieces(prev_end, lo))
+            states.extend(gaps(prev_end, lo, prev_loc, loc or prev_loc))
         states.append(State("event", lo, hi, e.lat, e.lon, event=e.index))
         prev_end = hi
+        prev_loc = loc or prev_loc
     if window.end > prev_end:
-        states.extend(State("gap", a, b) for a, b in _day_pieces(prev_end, window.end))
+        states.extend(gaps(prev_end, window.end, prev_loc, None))
     spans = {e.index: (e.start, e.end) for e in events}
     by_index = {e.index: e for e in events}
     headed: set[tuple[int, datetime]] = set()
@@ -309,6 +336,54 @@ def _rank(s: State) -> tuple:
 # Emissions
 
 
+def _event_support(s: State, fe, p, spread_m: float) -> tuple[float, tuple | None]:
+    """How well a frame fits an event: its nearest photos' vote for the event's place, and for
+    the event's own photos. A visit that holds the similar photos gets the whole vote; another
+    visit to the same place gets the place share only."""
+    occ, occ_best = fe.in_event(s.event, p.occasion_mode)
+    if s.has_location:
+        place, place_best = fe.near(s.lat, s.lon, max(p.radius_m, spread_m + 100.0))
+    else:
+        place, place_best = occ, occ_best                 # an event with no GPS: only its own photos speak for it
+    support = place * (p.other_visit + (1 - p.other_visit) * occ)
+    best = occ_best if occ_best is not None else place_best
+    if best is None:
+        return 0.0, None
+    return support, (s.lat, s.lon, best, place, occ_best is not None)
+
+
+def _reachable(s: State, lat: float, lon: float, p) -> bool:
+    """Can a place off the trail be visited inside this gap, given where the trail was on either side?"""
+    budget = p.speed_kmh * 1000.0 * s.reach_hours + p.reach_slack_m
+    a, b = s.reach_from, s.reach_to
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return haversine_m(a or b, (lat, lon)) <= budget
+    return haversine_m(a, (lat, lon)) + haversine_m((lat, lon), b) <= budget + haversine_m(a, b)
+
+
+def _gap_support(s: State, fe, p) -> tuple[float, tuple | None]:
+    """A gap holds no photos, so nothing speaks for the occasion; what speaks is the place.
+    Between two bursts at one place that place is offered (a stay); any gap also offers the
+    frame's own best place if it can be reached from where the trail was."""
+    best_support, best_choice = 0.0, None
+    if s.stay:
+        place, photo = fe.near(s.lat, s.lon, p.radius_m)
+        if photo is not None:
+            best_support = place * p.other_visit * p.stay_discount
+            best_choice = (s.lat, s.lon, photo, place, False)
+    for h in fe.places:
+        support = h.mass * p.other_visit * p.offtrail_discount
+        if support <= best_support:
+            break                                           # hypotheses are sorted by mass
+        if _reachable(s, h.lat, h.lon, p):
+            best_support, best_choice = support, (h.lat, h.lon, h.best, h.mass, False)
+            break
+    return best_support, best_choice
+
+
+
 def _event_hours(events: list[Event]) -> dict[int, set[int]]:
     """Local hours an event spans. Event times are tz-aware in the photos' own zone."""
     hours: dict[int, set[int]] = {}
@@ -344,6 +419,8 @@ def build_emissions(
     constraints: list[Constraint] | None = None,
     window: Window | None = None,
     event_weather: dict[int, str] | None = None,     # observed weather class per event (signals/weather.py)
+    evidence: Evidence | None = None,                # nearest photos and place votes per frame (align/evidence.py)
+    choices: dict | None = None,                     # filled: (frame, state) -> place the state offers the frame
 ) -> tuple[np.ndarray, set[int]]:
     from filmgeo.signals.weather import contradicts, normalise_clue
 
@@ -363,14 +440,31 @@ def build_emissions(
     hours = _event_hours(events)
 
     log_gap, log_out = math.log(params.gap_prob), math.log(params.outside_prob)
+    spread = {e.index: e.spread_m for e in events}
     for j, s in enumerate(states):
         if s.kind == "gap":
             em[:, j] = log_gap
+            if evidence is not None:
+                for i in range(n_frames):
+                    fe = evidence.frames[i]
+                    support, choice = _gap_support(s, fe, evidence.params)
+                    if choice is not None and choices is not None:
+                        choices[(i, j)] = choice
+                    em[i, j] = math.log(max(evidence.params.epsilon, (1 - fe.q) * params.gap_prob + fe.q * support))
         elif s.kind == "outside":
             em[:, j] = log_out
         elif s.kind == "event":
             for i in range(n_frames):
-                p = max(params.event_floor, best.get((i, s.event), 0.0))
+                if evidence is not None:
+                    fe = evidence.frames[i]
+                    support, choice = _event_support(s, fe, evidence.params, spread.get(s.event, 0.0))
+                    if choice is not None and choices is not None:
+                        choices[(i, j)] = choice
+                    # A frame that resembles nothing (q -> 0) is as likely in any event as the
+                    # first engine's floor said; one that resembles its photos is where they are.
+                    p = max(evidence.params.epsilon, (1 - fe.q) * params.event_floor + fe.q * support)
+                else:
+                    p = max(params.event_floor, best.get((i, s.event), 0.0))
                 v = math.log(p)
                 if clues and not _clue_consistent(clues[i], hours.get(s.event)):
                     v -= params.clue_penalty
@@ -559,12 +653,15 @@ def build_model(
     same_outing: set[tuple[int, int]] | None = None,
     params: AlignParams | None = None,
     event_weather: dict[int, str] | None = None,
+    evidence: Evidence | None = None,
 ) -> RollModel:
     params = params or AlignParams()
     anchors = [a for a in (anchors or []) if a.locked or a.confidence >= params.min_anchor_confidence]
     constraints = list(constraints or []) + anchored_days(anchors, constraints or []) + anchored_moments(anchors, constraints or [])
     states = build_states(window, events, anchors)
-    em, skipped = build_emissions(states, n_frames, params, anchors, events, sims, event_ids, clues, constraints, window, event_weather)
+    choices: dict = {}
+    em, skipped = build_emissions(states, n_frames, params, anchors, events, sims, event_ids, clues, constraints, window, event_weather,
+                                  evidence, choices)
     tr = build_transitions(states, params)
     bounds = frame_bounds(constraints or [], n_frames, window)
-    return RollModel(n_frames, states, em, tr, params, window, set(same_outing or ()), skipped, bounds)
+    return RollModel(n_frames, states, em, tr, params, window, set(same_outing or ()), skipped, bounds, evidence, choices)

@@ -50,6 +50,8 @@ class Assignment:
     location: str = "none"                  # ok | ambiguous | none
     location_source: str | None = None      # anchor | trail | interpolated
     clusters: list = field(default_factory=list)   # geo.Cluster, for the UI when ambiguous
+    place_confidence: float | None = None   # posterior mass on this place, when the nearest photos chose it (align/locate.py)
+    place_uuid: str | None = None           # the photo that shows the place
     offset_disputed: bool = False           # trail points in the interval, or the neighbouring anchors, disagree on offset
     offsets: list[int] = field(default_factory=list)   # the distinct offsets in play when disputed, for the UI to offer
 
@@ -197,6 +199,11 @@ def _assign_times(model: RollModel, path: list[int], intervals: list[tuple[datet
             fixed.append(True)
         else:
             mid = s.t_lo + (s.t_hi - s.t_lo) / 2
+            # In an event, beside the photo of it that looks most like the frame: a better
+            # guess at the minute than the middle of the visit.
+            c = model.choices.get((len(times), j))
+            if c is not None and c[4] and model.evidence is not None:
+                mid = model.evidence.photos[c[2]].date
             # Intervals are half-open on the right: a fact "14:05" is [14:05, 14:06), and the
             # written time must not land on the excluded end.
             times.append(min(max(mid, lo), max(lo, hi - timedelta(seconds=1))))
