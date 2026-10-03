@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -32,7 +32,7 @@ from filmgeo.embed.cache import VectorCache
 from filmgeo.geo import place
 from filmgeo.photos import library
 from filmgeo.photos.library import Asset
-from filmgeo.signals.base import TrailPoint, Window, collect, effective_window
+from filmgeo.signals.base import Constraint, TrailPoint, Window, collect, effective_window
 from filmgeo.signals.health_routes import HEALTH_DIR, HealthRoutes
 from filmgeo.signals.nfc_log import CACHE as NFC_CACHE, NfcLog
 from filmgeo.signals import swarm as swarm_mod
@@ -258,7 +258,21 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     overrides = overrides or RollOverrides(key)
     constraints = UserFacts(facts).constraints()
     anchors = anchors_from_verdicts(verdicts, pool, event_ids, sims)
+    for o in overrides.frames.values():
+        if not o.confirmed:
+            o.snapshot = None                     # unconfirmed: free again
+    release_contradicted(overrides, constraints, pool, n, window)
     anchors = overrides.apply(anchors, pool, event_ids, sims)
+    # A confirmed frame is held to what was confirmed: on its photo (a locked anchor, above),
+    # or at its second when there was no photo.
+    in_pool = {a.uuid for a in pool}
+    frozen = {k: o.snapshot for k, o in overrides.frames.items()
+              if o.confirmed and o.snapshot and 1 <= k <= n and not (facts.frames.get(k) and facts.frames[k].skip)}
+    for k, snap in frozen.items():
+        if o_anchor(overrides, k) or snap.get("anchor") in in_pool:
+            continue
+        t = datetime.fromisoformat(snap["time"])
+        constraints.append(Constraint("frame", "confirmed", frame=k, t_lo=t, t_hi=t + timedelta(seconds=1), note="confirmed"))
     clues = clues_from_verdicts(verdicts, n)
     same_outing = outings.same_outing_pairs(n) if outings else set()
     # v2 (COO-177): where each frame looks like it was taken — by the photos (the evidence the
@@ -277,7 +291,21 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     trail = sorted([p for p in trail if p.source != USER_SOURCE] + UserFacts(facts).trail_points(window), key=lambda p: p.time)
     pins = {k - 1: (f.lat, f.lon) for k, f in facts.frames.items() if f.lat is not None and f.lon is not None and 1 <= k <= n}
     place(solution, trail, pins)
-    locate.apply(model, solution, pinned=set(pins))
+    locate.apply(model, solution, pinned=set(pins) | {k - 1 for k in frozen})
+    for k, snap in frozen.items():
+        a = solution.assignments[k - 1]
+        if k - 1 not in pins and snap.get("lat") is not None:
+            a.lat, a.lon, a.location, a.clusters = snap["lat"], snap["lon"], "ok", []
+            a.location_source = snap.get("location_source") or a.location_source
+        if snap.get("tzoffset") is not None:
+            a.tzoffset = snap["tzoffset"]
+    # A frame confirmed just now (or before snapshots existed, with no saved solve to adopt)
+    # is frozen as it stands in this solve — the one the user is looking at.
+    for k, o in overrides.frames.items():
+        if o.confirmed and o.snapshot is None and 1 <= k <= n and solution.assignments[k - 1].source != "skipped":
+            a = solution.assignments[k - 1]
+            o.snapshot = {"time": a.time.isoformat(), "tzoffset": a.tzoffset, "lat": a.lat, "lon": a.lon,
+                          "anchor": a.anchor_uuid, "location_source": a.location_source}
     rev = reverse_test(inputs, solution)
     check = window_check(model, solution, n_verified=len(verdicts) or None)
     possible = possible_candidates(frames, solution, pool, event_ids, sims)
@@ -286,6 +314,42 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
                    verdicts, inputs, solution, rev, check, _trail_counts(trail), outings,
                    origin=origin, trail=trail, overrides=overrides, possible=possible, exact_variant=exact_variant,
                    evidence=evidence, readings=readings, visits=visits)
+
+
+def release_contradicted(overrides: RollOverrides, constraints: list[Constraint], pool: list[Asset], n: int, window: Window) -> list[int]:
+    """Unconfirm the frozen frames that the user's own decisions now rule out.
+
+    A confirmation freezes a frame, but it is the weaker statement: a photo the user picks, a
+    date or a place they type, says something new, and a neighbour confirmed earlier at a time
+    that order no longer allows was confirmed on a proposal that no longer stands. Such frames
+    are released — unconfirmed, to be proposed afresh and looked at again — rather than the
+    solve refusing. The bounds come from facts and picks only; frozen frames never release
+    one another (they were confirmed on one consistent solve).
+    """
+    from filmgeo.signals.base import frame_bounds
+
+    by_uuid = {a.uuid: a for a in pool}
+    hard = list(constraints)
+    for k, o in overrides.frames.items():
+        if o.anchor and o.anchor in by_uuid and 1 <= k <= n:
+            t = by_uuid[o.anchor].date
+            hard.append(Constraint("frame", "pick", frame=k, t_lo=t, t_hi=t + timedelta(seconds=1)))
+    bounds = frame_bounds(hard, n, window)
+    released = []
+    for k, o in overrides.frames.items():
+        if not (o.confirmed and o.snapshot and 1 <= k <= n) or o.anchor:
+            continue
+        t = datetime.fromisoformat(o.snapshot["time"])
+        lo, hi = bounds[k - 1]
+        if not (lo <= t <= hi):
+            o.confirmed, o.snapshot = False, None
+            released.append(k)
+    return released
+
+
+def o_anchor(overrides: RollOverrides, number: int) -> str | None:
+    o = overrides.frames.get(number)
+    return o.anchor if o else None
 
 
 def event_weather_for(events: list, clues: list[FrameClues | None]) -> dict[int, str] | None:
@@ -371,7 +435,7 @@ def possible_candidates(frames: list[FrameRef], solution: Solution, pool: list[A
 
 def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, assets: list[Asset] | None = None,
         alias: str | None = None, cap: int | None = MAX_PER_EVENT, facts: RollFacts | None = None,
-        overrides: RollOverrides | None = None, lookup: bool = True) -> RollRun:
+        overrides: RollOverrides | None = None, lookup: bool = True, assignments_dir: Path = ASSIGNMENTS_DIR) -> RollRun:
     """`alias` names the facts, verdicts and assignments files instead of the roll key — for
     running one roll under a second window (the wrong-month validation) without clobbering.
     `facts` and `overrides` default to the files on disk; the API passes its edited copies."""
@@ -397,6 +461,7 @@ def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, asset
     outings = Outings.load(key)
     trail, _ = trail_for(assets, window, facts)
     overrides = overrides or RollOverrides.load(key)
+    overrides.adopt_assignments(assignments_dir / f"{key}.json")
     evidence = None
     if config.ENGINE != "v1":
         evidence = build_evidence(fv, pool, pv, event_ids, assets)

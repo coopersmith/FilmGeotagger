@@ -150,8 +150,13 @@ class Store:
             sidecar.adopt(key, folder, self.facts_dir, self.overrides_dir)   # a roll written elsewhere: its decisions come along
         facts = facts or RollFacts.load(key, self.facts_dir)
         overrides = overrides or RollOverrides.load(key, self.overrides_dir)
+        # Frames confirmed before confirmations froze anything take the values of the last
+        # saved solve — what the user saw — before this solve can replace them.
+        adopted = overrides.adopt_assignments(self.assignments_dir / f"{key}.json")
         run = self.loader(origin, alias=key, assets=self.assets, facts=facts, overrides=overrides, widen=widen)
         self.runs[key] = run
+        if adopted or any(o.confirmed and o.snapshot for o in overrides.frames.values()):
+            overrides.save(self.overrides_dir)
         pipeline.save(run, self.assignments_dir)
         return run
 
