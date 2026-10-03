@@ -395,11 +395,17 @@ def verify(
     only_new: bool = typer.Option(False, help="skip frames whose shown candidates are unchanged (after --widen)"),
     widen: bool = typer.Option(False, help="retrieve on the window widened by a month each side"),
     inside: bool = typer.Option(False, help="second round: only the unanchored frames, with photos from inside each frame's interval"),
+    sure: float = typer.Option(0.6, help="skip frames the engine already dates with at least this confidence and places (0 = verify every frame)"),
     model: str = typer.Option(None, help="Claude model id"),
     alias: str = typer.Option(None, "--as", help="name the facts/verdicts/assignments files differently (a second window for one roll)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="spend the money without asking"),
 ) -> None:
     """Ask Claude which candidate, if any, shows each frame's occasion. Costs money — says how much first.
+
+    Frames the engine is already sure of are left out (`--sure`): measured on the reviewed
+    rolls, an unverified frame the engine dates at 0.6 confidence or more was on the right
+    occasion 50 times in 51 (docs/v2-findings.md), so verifying it buys little. What
+    verification is for is the rest — and the places it reads off them (signs, landmarks).
 
     `--inside` is the iterate step: after a first round and an align, the anchored frames bound
     every other frame's interval, and the photos inside that interval are the only ones it
@@ -414,7 +420,12 @@ def verify(
     _require_readable(r.frames[0].path, r.pool[0].derivative)
     existing = r.verdicts
     todo = []
+    skipped_sure = []
     for f, a in zip(r.frames[: limit or None], r.solution.assignments):
+        if sure and r.evidence is not None and f.number not in existing and a.source == "interpolated" \
+                and a.confidence >= sure and a.location == "ok":
+            skipped_sure.append(f.number)
+            continue
         if inside:
             if a.source in ("anchored", "locked", "skipped"):
                 continue
@@ -433,6 +444,9 @@ def verify(
     est = 0.035 * n_images / 6        # $0.035/frame at k=6 on claude-opus-5 (M1), linear in images shown
     console.print(f"[bold]{r.key}[/]: {len(todo)} frames, {n_images} candidates{' inside their intervals' if inside else ''} on {model} "
                   f"— about [bold]${est:.2f}[/] ({len(existing)} already verified)")
+    if skipped_sure:
+        console.print(f"  not asked about frame{'s' if len(skipped_sure) > 1 else ''} {', '.join(map(str, skipped_sure))}: already dated at "
+                      f"{sure:.1f}+ confidence and placed by the camera roll (--sure 0 to verify them too)")
     if not todo:
         return
     if not yes and not typer.confirm("Spend it?"):
@@ -453,6 +467,12 @@ def verify(
                           f"{v.confidence:.2f}  {v.evidence[:70]}")
     p = pipeline.save_verdicts(r.key, out, {"roll": r.key, "model": model, "k": k, "cap": cap})
     console.print(f"{len(out)} verdicts -> {p}")
+    # What the verdicts read off the frames, looked up now (free) so the solver and the review
+    # server find it in the gazetteer's cache.
+    from filmgeo.align import readings as readings_mod
+
+    for rd in readings_mod.from_verdicts(pipeline.load_verdicts(r.key), r.pool):
+        console.print(f"  frame {rd.frame + 1}: read “{rd.text}” -> {rd.name} ({rd.lat:.5f}, {rd.lon:.5f})")
 
 
 @app.command()
@@ -506,6 +526,8 @@ def align(
         table.add_column(col)
     for f, a in zip(r.frames, sol.assignments):
         loc = f"{a.lat:.4f},{a.lon:.4f}" if a.location == "ok" else f"ambiguous ({len(a.clusters)})" if a.location == "ambiguous" else "-"
+        if a.location == "ok" and a.location_source in ("visual", "reading"):
+            loc += f" {a.place_name or a.location_source}" + (f" {a.place_confidence:.2f}" if a.place_confidence is not None else "")
         truth = ""
         if f.truth:
             inside = a.t_lo - timedelta(minutes=2) <= f.truth <= a.t_hi + timedelta(minutes=2)
@@ -516,6 +538,11 @@ def align(
                   + ("[red]doubtful[/] — " if r.check.doubtful else "") + r.check.reason
                   + (" · [red]possibly reverse-wound[/]" if r.reverse.suspect else ""))
     console.print("best days: " + ", ".join(f"{d:%a %-d %b} {m:.1f}" for d, m in r.check.best_days))
+    if r.evidence is not None:
+        placed = sum(a.location == "ok" for a in sol.assignments)
+        console.print(f"engine v2: {placed}/{r.n_frames} placed, {sum(a.location_source in ('visual', 'reading') for a in sol.assignments)} by what they look like or say"
+                      + (f"; read off the frames: {', '.join(f'{x.frame + 1} {x.name}' for x in r.readings)}" if r.readings else "")
+                      + (f"; {len(r.visits)} recorded visits on the timeline" if r.visits else ""))
     jp = pipeline.save(r)
     hp = arep.write(out / f"align_{r.key}.html", r)
     console.print(f"wrote {jp} and {hp}")
@@ -527,8 +554,14 @@ def embed(
     to: str = typer.Option(None, "--to", help="end of the window (YYYY-MM-DD); default: today"),
     variant: str = typer.Option("siglip", help="siglip | siglip_gray | dinov2"),
     dry_run: bool = typer.Option(False, help="count what would be embedded and stop"),
+    atlas: bool = typer.Option(False, "--atlas", help="embed the all-time place atlas instead of a window: a spread of photos from every place in the library"),
+    cap: int = typer.Option(None, help="--atlas: photos per ~200 m cell (default 16)"),
 ) -> None:
     """Embed the phone photos a window needs and nothing already cached — the incremental cache (COO-138).
+
+    `--atlas` embeds a sample of the whole library by place (COO-177), so a frame can be
+    recognised somewhere the phone stayed in the pocket this month. Tens of thousands of photos
+    the first time (an hour or two), saved as it goes and resumable; incremental afterwards.
 
     Photos derivatives are unreadable from tool-call shells: run this from Terminal.app. With no
     options it embeds everything newer than the newest photo the cache already holds, which is
@@ -549,10 +582,18 @@ def embed(
         cached_dates = [by_uuid[k].date for k in cache.keys if k in by_uuid]
         lo = max(cached_dates) - timedelta(days=1) if cached_dates else min(a.date for a in assets)
     hi = datetime.fromisoformat(to).astimezone() + timedelta(days=1) if to else datetime.now().astimezone()
-    pool = library.candidates(assets, lo, hi)
-    missing = cache.missing([a.uuid for a in pool])
-    console.print(f"{variant}: {len(pool)} candidate photos {lo:%Y-%m-%d} .. {hi:%Y-%m-%d}, [bold]{len(missing)}[/] not yet embedded "
-                  f"({len(cache.keys)} cached in all)")
+    if atlas:
+        pool = library.atlas(assets, cap or library.ATLAS_CAP)
+        # Places near what is already embedded first: the rolls in hand are served soonest.
+        near = {library.place_cell(by_uuid[k].lat, by_uuid[k].lon, 50_000) for k in cache.keys if k in by_uuid and by_uuid[k].lat is not None}
+        pool.sort(key=lambda a: library.place_cell(a.lat, a.lon, 50_000) not in near)
+        missing = cache.missing([a.uuid for a in pool])
+        console.print(f"{variant}: place atlas of {len(pool)} photos, [bold]{len(missing)}[/] not yet embedded ({len(cache.keys)} cached in all)")
+    else:
+        pool = library.candidates(assets, lo, hi)
+        missing = cache.missing([a.uuid for a in pool])
+        console.print(f"{variant}: {len(pool)} candidate photos {lo:%Y-%m-%d} .. {hi:%Y-%m-%d}, [bold]{len(missing)}[/] not yet embedded "
+                      f"({len(cache.keys)} cached in all)")
     if not missing or dry_run:
         return
     _require_readable(by_uuid[missing[0]].derivative)
@@ -561,8 +602,12 @@ def embed(
     name, gray = {"siglip": ("SigLIP", False), "siglip_gray": ("SigLIP", True), "dinov2": ("DINOv2", False)}[variant]
     embedder = getattr(models, name)(grayscale=gray)
     t0 = time.time()
-    with console.status(f"embedding {len(missing)} photos..."):
-        embed_cached(embedder, missing, [by_uuid[u].derivative for u in missing], variant)
+
+    def tick(done: int, total: int) -> None:
+        rate = done / max(1e-9, time.time() - t0)
+        console.print(f"  {done}/{total}  {rate:.1f} photos/s  about {(total - done) / max(rate, 1e-9) / 60:.0f} min left")
+
+    embed_cached(embedder, missing, [by_uuid[u].derivative for u in missing], variant, progress=tick)
     console.print(f"embedded {len(missing)} in {time.time() - t0:.0f}s -> {VectorCache(variant).dir}")
 
 

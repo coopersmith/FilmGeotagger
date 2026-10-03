@@ -123,6 +123,28 @@ anchor; keys `d` and `p`; `GET …/frames/{n}/photos`) is done, unmeasured on a 
 The map has distinct markers (labelled red/blue frame pin, grey trail, green check-ins and
 rings), click-a-spot placing, and name search (own places, then Nominatim via
 `GET /api/geocode`); `index.html` is served no-cache.
+**Engine v2 (COO-177, 3 October 2026) is the default** — read `docs/v2-findings.md` before
+touching `align/`. v1 asked "which phone photo shows the same occasion?" and placed nothing
+it could not anchor; measured on the eleven rolls the user reviewed (137 frames, 84 with strong
+truth, `scripts/v2/`), for the frames the user had to fix by hand the most similar photo was
+at the *true place* while the true occasion ranked 3rd-88th. v2 is place first: each frame's
+nearest photos vote for places (`align/evidence.py`, vote worth `q` from the best photo's
+similarity); names read off the frame — the `signage_text` / `place_guess` verification always
+wrote and nothing used — are looked up with MapKit (`gazetteer.py`, `align/readings.py`:
+9 readings, 6 with truth, all within 175 m); stays and recorded visits (check-ins as timeline
+states, `align/visits.py`) carry places; the place is decided by the vote among what the
+roll's order leaves possible and the time is then solved within it (`align/locate.py`,
+`solve.solve`); `place_confidence` is separate from `confidence`. Unaided, on the truth:
+v1 + Claude place 62/81 and 5 of the user's 23 fixes, right day 72; **v2 with no API 69/81,
+13/23, day 75; v2 + the same verdicts 75/81, 17/23**. Held out (8 hand-tagged rolls, free):
+place 19/24 vs 0/24. Measured and off: the all-time place atlas (`embed --atlas`, 40k photos
+embedded, `FILMGEO_ATLAS=1`), centring the vectors, dealing a place's vote among its visits,
+posterior-path decoding. A confirmation now **freezes** its frame (`FrameOverride.snapshot`;
+existing ones adopt the saved solve; the user's newer decisions release what they contradict);
+117 confirmed frames across 13 rolls checked unmoved under v2 (`scripts/v2/frozen_check.py`).
+`geo.clusters` was quadratic and was the whole of a re-solve's 6-30 s. `verify --sure 0.6`
+skips frames the engine already dates. `FILMGEO_ENGINE=v1` runs the first engine.
+`.filmgeo/backup-before-v2-2026-10-03/` holds the review state from before the switch.
 Left in M5: COO-134 calendar and COO-135
 email receipts (both need geocoding and the user's data; low measured value expected given
 COO-119/136), COO-137 cross-roll (needs a multi-roll batch).
@@ -188,7 +210,9 @@ uv run filmgeo clear <folder> [--all]                        # remove filmgeo: k
 uv run --extra api --extra embed filmgeo serve [roll...]   # review API + UI on http://127.0.0.1:8765 (Terminal.app: it reads Photos derivatives)
 (cd web && npm install && npm run build)                  # the UI -> web/dist, which serve mounts at /; `npm run dev` proxies /api to 8765
 uv run --extra embed filmgeo embed [--from 2026-05-01 --to 2026-05-27] [--variant siglip_gray] [--dry-run]   # Terminal.app only; default: what is new
+uv run --extra embed filmgeo embed --atlas [--dry-run]   # Terminal.app; the all-time place atlas (measured off, see v2-findings)
 uv run --extra dev --extra api pytest   # unit + API tests
+(cd scripts/v2 && uv run --extra embed python sweep.py)   # v2 on the reviewed rolls' truth, free; see scripts/v2/README.md
 
 uv run --extra embed python scripts/eval_m1.py --rolls 9
 uv run --extra embed python scripts/sweep_m1.py --rolls 9 --anchored-only   # cached vectors, seconds
@@ -204,7 +228,8 @@ Optional dependency groups: `embed` (torch, open_clip, timm, numpy), `verify` (a
 
 `.filmgeo/` holds `library.json` (63 MB Photos metadata cache), `vectors/` (26 MB of cached
 embeddings), `facts/` and `overrides/` (the user's input per roll, not derivable),
-`assignments/` (the solved proposal per roll, what M4 writes), `writes/` (write logs and
+`assignments/` (the solved proposal per roll, what M4 writes), `gazetteer.json` (place-name
+lookups; asked once), `eval_v2/` (the v2 truth table and pickled runs), `writes/` (write logs and
 argfiles), `signals/{health,swarm,timeline}/` (the user's exports, dropped in by hand), `thumbs/` and `nfc_log.txt`
 (the NFC note text; re-reading it through `osascript` takes minutes, see `signals/nfc_log.py`). Do not delete casually: the library cache costs a full `PhotosDB()` parse and the
 vectors cost GPU time. `reports/` holds generated contact sheets.

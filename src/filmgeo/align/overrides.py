@@ -35,6 +35,12 @@ class FrameOverride:
     rejected: list[str] = field(default_factory=list)   # "not a match": verdict anchors on these uuids are dropped
     no_reference: bool = False                      # "no reference": every verdict anchor on this frame is dropped
     confirmed: bool = False
+    # What was confirmed: {"time", "tzoffset", "lat", "lon", "anchor", "location_source"}.
+    # A confirmation is of an assignment, and it freezes that assignment: later solves — a
+    # neighbour's new fact, new verdicts, a new engine — hold the frame to it instead of
+    # re-deriving it. Before this, a confirmed frame with no pick and no fact was proposed
+    # afresh on every solve, and its written file could silently fall out of date.
+    snapshot: dict | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -71,6 +77,21 @@ class RollOverrides:
         p.write_text(json.dumps(data, indent=2) + "\n")
         return p
 
+    def adopt_assignments(self, path: Path) -> int:
+        """Give confirmed frames that have no snapshot the values of the last saved solve
+        (`.filmgeo/assignments/<roll>.json`): what the user saw when they confirmed. Returns how many."""
+        if not path.exists():
+            return 0
+        frames = {f["number"]: f for f in json.loads(path.read_text()).get("frames", [])}
+        n = 0
+        for number, o in self.frames.items():
+            f = frames.get(number)
+            if o.confirmed and o.snapshot is None and f is not None and f.get("status") == "confirmed" and f.get("source") != "skipped":
+                o.snapshot = {"time": f["time"], "tzoffset": f.get("tzoffset"), "lat": f.get("lat"), "lon": f.get("lon"),
+                              "anchor": f.get("anchor_uuid"), "location_source": f.get("location_source")}
+                n += 1
+        return n
+
     def frame(self, number: int) -> FrameOverride:
         return self.frames.setdefault(number, FrameOverride(number=number))
 
@@ -93,14 +114,16 @@ class RollOverrides:
             o = self.frames.get(a.frame + 1)
             if o is None or o.is_empty:
                 out.append(a)
-            elif o.anchor or o.no_reference or a.uuid in o.rejected:
-                continue
+            elif o.anchor or o.no_reference or a.uuid in o.rejected or (o.confirmed and o.snapshot):
+                continue                                   # decided by the user: a pick, a rejection, or a confirmation
             else:
                 out.append(a)
         for n, o in sorted(self.frames.items()):
-            if not o.anchor or o.anchor not in index:
+            # The user's pick, or the photo a confirmed frame was confirmed on.
+            uuid = o.anchor or (o.snapshot.get("anchor") if o.confirmed and o.snapshot and not o.no_reference else None)
+            if not uuid or uuid not in index:
                 continue
-            j = index[o.anchor]
+            j = index[uuid]
             asset = pool[j]
             i = n - 1
             sim = float(sims[i, j]) if sims is not None and 0 <= i < sims.shape[0] else 0.0

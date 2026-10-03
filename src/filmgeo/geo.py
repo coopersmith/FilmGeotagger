@@ -50,16 +50,24 @@ def _centroid(points: list[tuple[float, float]]) -> tuple[float, float, float]:
 
 
 def clusters(points: list[TrailPoint], radius_m: float = CLUSTER_M) -> list[Cluster]:
-    """Greedy clustering by distance to a running centroid; biggest cluster first."""
+    """Greedy clustering by distance to a running centroid; biggest cluster first.
+
+    The centroid is kept as running sums: recomputing it from the members for every point
+    made a month-wide interval (thousands of trail points) cost seconds per frame, which was
+    the whole of a re-solve's time on the larger rolls.
+    """
     groups: list[list[TrailPoint]] = []
+    sums: list[list[float]] = []          # [lat sum, lon sum] per group
     for p in points:
-        for g in groups:
-            lat, lon, _ = _centroid([(q.lat, q.lon) for q in g])
-            if haversine_m((lat, lon), (p.lat, p.lon)) <= radius_m:
+        for g, t in zip(groups, sums):
+            if haversine_m((t[0] / len(g), t[1] / len(g)), (p.lat, p.lon)) <= radius_m:
                 g.append(p)
+                t[0] += p.lat
+                t[1] += p.lon
                 break
         else:
             groups.append([p])
+            sums.append([p.lat, p.lon])
     out = []
     for g in groups:
         lat, lon, spread = _centroid([(q.lat, q.lon) for q in g])

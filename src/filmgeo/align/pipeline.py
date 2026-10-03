@@ -12,23 +12,30 @@ case). The eval case also carries the ground truth so the report can show it.
 from __future__ import annotations
 
 import json
+import copy
+import dataclasses
+import threading
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
 
 from filmgeo import eval_set, events as ev, retrieve
 from filmgeo.align.checks import ReverseTest, RollInputs, WindowCheck, reverse_test, widen as widen_window, window_check
+from filmgeo.align import evidence as evidence_mod, readings as readings_mod, visits as visits_mod
+from filmgeo.align.evidence import Evidence
+from filmgeo.align import locate
 from filmgeo.align.model import Anchor, FrameClues
 from filmgeo.align.overrides import RollOverrides
 from filmgeo.align.solve import Solution, solve
+from filmgeo import config
 from filmgeo.config import DATA_DIR, MAX_PER_EVENT, TOP_K
 from filmgeo.embed.cache import VectorCache
 from filmgeo.geo import place
 from filmgeo.photos import library
 from filmgeo.photos.library import Asset
-from filmgeo.signals.base import TrailPoint, Window, collect, effective_window
+from filmgeo.signals.base import Constraint, TrailPoint, Window, collect, effective_window, frame_bounds
 from filmgeo.signals.health_routes import HEALTH_DIR, HealthRoutes
 from filmgeo.signals.nfc_log import CACHE as NFC_CACHE, NfcLog
 from filmgeo.signals import swarm as swarm_mod
@@ -150,6 +157,9 @@ class RollRun:
     overrides: RollOverrides | None = None
     possible: dict[int, list[retrieve.Candidate]] = field(default_factory=dict)   # by frame number: inside the interval
     exact_variant: str = "siglip"      # how anchored frames' occasion photos are ranked: siglip_gray when cached
+    evidence: Evidence | None = None   # v2: nearest photos and place votes per frame, before readings (align/evidence.py)
+    readings: list = field(default_factory=list)   # v2: places read off the frames, as used in this solve
+    visits: list = field(default_factory=list)     # v2: recorded stops from the trail's non-photo sources
 
     @property
     def n_frames(self) -> int:
@@ -240,7 +250,7 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
               pool: list[Asset], events: list, event_ids: list[int], sims: np.ndarray,
               candidates: dict[int, list[retrieve.Candidate]], verdicts: dict[int, Verdict],
               trail: list[TrailPoint], outings: Outings | None = None,
-              overrides: RollOverrides | None = None) -> RollRun:
+              overrides: RollOverrides | None = None, evidence: Evidence | None = None) -> RollRun:
     """Everything after the caches: anchors, constraints, solve, place, checks.
 
     Pure over its arguments, so the review API can re-solve a roll in milliseconds after an
@@ -248,26 +258,128 @@ def solve_run(key: str, origin: str, frames: list[FrameRef], facts: RollFacts, w
     points from an earlier facts state; they are replaced by the current facts' own.
     """
     n = len(frames)
-    overrides = overrides or RollOverrides(key)
+    # A copy: this function releases and snapshots confirmations, and a solve that then fails
+    # must leave the caller's overrides — the cached run's, in the review server — as they were.
+    # The run it returns carries the copy; that is what gets saved.
+    overrides = copy.deepcopy(overrides) if overrides is not None else RollOverrides(key)
     constraints = UserFacts(facts).constraints()
     anchors = anchors_from_verdicts(verdicts, pool, event_ids, sims)
+    for o in overrides.frames.values():
+        if not o.confirmed:
+            o.snapshot = None                     # unconfirmed: free again
+    release_contradicted(overrides, constraints, pool, n, window)
     anchors = overrides.apply(anchors, pool, event_ids, sims)
+    # A confirmed frame is held to what was confirmed: on its photo (a locked anchor, above),
+    # or at its second when there was no photo.
+    in_pool = {a.uuid for a in pool}
+    frozen = {k: o.snapshot for k, o in overrides.frames.items()
+              if o.confirmed and o.snapshot and 1 <= k <= n and not (facts.frames.get(k) and facts.frames[k].skip)}
+    if frozen:
+        # A link between two frozen frames has done its work — the confirmed times are its
+        # outcome — and must not be read again against them: a chain of links between frames
+        # none of which was dated did nothing in the solve the user confirmed, and would
+        # contradict the confirmed times once the snapshots date them. A link to a frame that
+        # is still free stands, whichever of the two holds it.
+        constraints = [dataclasses.replace(c, same_day_as=None if c.same_day_as in frozen else c.same_day_as,
+                                           same_time_as=None if c.same_time_as in frozen else c.same_time_as)
+                       if c.scope == "frame" and c.frame in frozen else c for c in constraints]
+        hard = frame_bounds([c for c in constraints if c.source != "confirmed"]
+                            + [Constraint("frame", "pick", frame=a.frame + 1, t_lo=a.time, t_hi=a.time + timedelta(seconds=1)) for a in anchors if a.locked],
+                            n, window)
+    for k, snap in frozen.items():
+        if (o_anchor(overrides, k) or snap.get("anchor")) in in_pool:
+            continue                              # held on its photo, as a locked anchor
+        lo, hi = hard[k - 1]
+        t = min(max(datetime.fromisoformat(snap["time"]), lo), max(lo, hi - timedelta(seconds=1)))    # inside what facts and picks allow
+        constraints.append(Constraint("frame", "confirmed", frame=k, t_lo=t, t_hi=t + timedelta(seconds=1), note="confirmed"))
     clues = clues_from_verdicts(verdicts, n)
     same_outing = outings.same_outing_pairs(n) if outings else set()
+    # v2 (COO-177): where each frame looks like it was taken — by the photos (the evidence the
+    # caller built from the vectors), by names read off the frames (looked up offline here:
+    # `run()` asks the gazetteer once, a re-solve never touches the network), and with the
+    # trail's recorded stops as places the frames can land on.
+    readings, visits, full_evidence = [], [], None
+    if evidence is not None:
+        readings = readings_mod.from_verdicts(verdicts, pool, offline=True)
+        full_evidence = evidence_mod.add_readings(evidence, readings)
+        visits = visits_mod.from_trail(trail)
     inputs = RollInputs(window, events, n, anchors, sims, event_ids, clues, constraints, same_outing,
-                        event_weather=event_weather_for(events, clues))
+                        event_weather=event_weather_for(events, clues), evidence=full_evidence, visits=visits)
     model = inputs.build()
     solution = solve(model)
     trail = sorted([p for p in trail if p.source != USER_SOURCE] + UserFacts(facts).trail_points(window), key=lambda p: p.time)
     pins = {k - 1: (f.lat, f.lon) for k, f in facts.frames.items() if f.lat is not None and f.lon is not None and 1 <= k <= n}
     place(solution, trail, pins)
+    locate.apply(model, solution, pinned=set(pins) | {k - 1 for k in frozen})
+    for k, snap in frozen.items():
+        a = solution.assignments[k - 1]
+        if k - 1 not in pins:
+            if snap.get("lat") is not None:
+                a.lat, a.lon, a.location, a.clusters = snap["lat"], snap["lon"], "ok", []
+                a.location_source = snap.get("location_source") or a.location_source
+            else:                                 # confirmed with no place: a later solve must not give it one
+                a.lat = a.lon = None
+                a.location, a.location_source = ("ambiguous" if a.clusters else "none"), None
+            a.place_confidence = a.place_uuid = a.place_name = None
+        a.tzoffset = snap.get("tzoffset")
+        a.time = datetime.fromisoformat(snap["time"])       # to the second: it is what was confirmed, and perhaps written
+    # A frame confirmed just now (or before snapshots existed, with no saved solve to adopt)
+    # is frozen as it stands in this solve — the one the user is looking at.
+    for k, o in overrides.frames.items():
+        if o.confirmed and o.snapshot is None and 1 <= k <= n and solution.assignments[k - 1].source != "skipped":
+            a = solution.assignments[k - 1]
+            o.snapshot = {"time": a.time.isoformat(), "tzoffset": a.tzoffset, "lat": a.lat, "lon": a.lon,
+                          "anchor": a.anchor_uuid, "location_source": a.location_source}
     rev = reverse_test(inputs, solution)
     check = window_check(model, solution, n_verified=len(verdicts) or None)
     possible = possible_candidates(frames, solution, pool, event_ids, sims)
     exact_variant = exact_ranking(frames, solution, pool, event_ids, possible)
     return RollRun(key, frames, facts, window, window_source, pool, events, event_ids, sims, candidates,
                    verdicts, inputs, solution, rev, check, _trail_counts(trail), outings,
-                   origin=origin, trail=trail, overrides=overrides, possible=possible, exact_variant=exact_variant)
+                   origin=origin, trail=trail, overrides=overrides, possible=possible, exact_variant=exact_variant,
+                   evidence=evidence, readings=readings, visits=visits)
+
+
+def release_contradicted(overrides: RollOverrides, constraints: list[Constraint], pool: list[Asset], n: int, window: Window) -> list[int]:
+    """Unconfirm the frozen frames that the user's own decisions now rule out.
+
+    A confirmation freezes a frame, but it is the weaker statement: a photo the user picks, a
+    date or a place they type, says something new, and a neighbour confirmed earlier at a time
+    that order no longer allows was confirmed on a proposal that no longer stands. Such frames
+    are released — unconfirmed, to be proposed afresh and looked at again — rather than the
+    solve refusing. The bounds come from facts and picks only; frozen frames never release
+    one another (they were confirmed on one consistent solve).
+    """
+    from filmgeo.signals.base import frame_bounds
+
+    by_uuid = {a.uuid: a for a in pool}
+    hard = list(constraints)
+    for k, o in overrides.frames.items():
+        if o.anchor and o.anchor in by_uuid and 1 <= k <= n:
+            t = by_uuid[o.anchor].date
+            hard.append(Constraint("frame", "pick", frame=k, t_lo=t, t_hi=t + timedelta(seconds=1)))
+    bounds = frame_bounds(hard, n, window)
+    released = []
+    for k, o in overrides.frames.items():
+        if not (o.confirmed and o.snapshot and 1 <= k <= n) or (o.anchor and o.anchor in by_uuid):
+            continue
+        t = datetime.fromisoformat(o.snapshot["time"])
+        lo, hi = bounds[k - 1]
+        if not (lo - FROZEN_SLACK <= t <= hi + FROZEN_SLACK):
+            o.confirmed, o.snapshot = False, None
+            released.append(k)
+    return released
+
+
+# A confirmed time may sit a few seconds the wrong side of a neighbour's photo: frames squeezed
+# between two anchors on one instant were spaced backwards from it, and that is what was
+# confirmed and written. Within this much it is held as it is, not released.
+FROZEN_SLACK = timedelta(minutes=1)
+
+
+def o_anchor(overrides: RollOverrides, number: int) -> str | None:
+    o = overrides.frames.get(number)
+    return o.anchor if o else None
 
 
 def event_weather_for(events: list, clues: list[FrameClues | None]) -> dict[int, str] | None:
@@ -353,7 +465,7 @@ def possible_candidates(frames: list[FrameRef], solution: Solution, pool: list[A
 
 def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, assets: list[Asset] | None = None,
         alias: str | None = None, cap: int | None = MAX_PER_EVENT, facts: RollFacts | None = None,
-        overrides: RollOverrides | None = None) -> RollRun:
+        overrides: RollOverrides | None = None, lookup: bool = True, assignments_dir: Path = ASSIGNMENTS_DIR) -> RollRun:
     """`alias` names the facts, verdicts and assignments files instead of the roll key — for
     running one roll under a second window (the wrong-month validation) without clobbering.
     `facts` and `overrides` default to the files on disk; the API passes its edited copies."""
@@ -379,8 +491,30 @@ def run(roll: str, pad_days: int = 2, k: int = TOP_K, widen: bool = False, asset
     outings = Outings.load(key)
     trail, _ = trail_for(assets, window, facts)
     overrides = overrides or RollOverrides.load(key)
+    overrides.adopt_assignments(assignments_dir / f"{key}.json")
+    evidence = None
+    if config.ENGINE != "v1":
+        evidence = build_evidence(fv, pool, pv, event_ids, assets)
+        if lookup and threading.current_thread() is threading.main_thread():
+            # Fills the gazetteer cache; the solve reads it offline. Only from the main thread
+            # (a CLI command): the review server solves on worker threads, where MapKit cannot
+            # answer and a network wait has no place — it uses what `verify` and `align` cached.
+            readings_mod.from_verdicts(verdicts, pool)
     return solve_run(key, roll, frames, facts, window, source, pool, events, event_ids, sims, candidates,
-                     verdicts, trail, outings, overrides)
+                     verdicts, trail, outings, overrides, evidence)
+
+
+def build_evidence(fv: np.ndarray, pool: list[Asset], pv: np.ndarray, event_ids: list[int], assets: list[Asset],
+                   params: evidence_mod.EvidenceParams | None = None) -> Evidence:
+    """Place evidence for a roll from the cached vectors: the window's pool and the atlas within reach."""
+    p = params or evidence_mod.EvidenceParams()
+    cache = VectorCache("siglip")
+    atlas = evidence_mod.atlas_candidates(assets, pool, cache.index, p.atlas_reach_m) if config.ATLAS else []
+    av = cache.get([a.uuid for a in atlas]) if atlas else None
+    if atlas:
+        ok = np.linalg.norm(av, axis=1) > 0.5              # unreadable derivatives were cached as zero vectors
+        atlas, av = [a for a, k in zip(atlas, ok) if k], av[ok]
+    return evidence_mod.build(fv, pool, pv, event_ids, atlas, av, p)
 
 
 def resolve(r: RollRun, facts: RollFacts | None = None, overrides: RollOverrides | None = None,
@@ -400,7 +534,7 @@ def resolve(r: RollRun, facts: RollFacts | None = None, overrides: RollOverrides
         raise WindowChanged(f"window moved to {window.start:%Y-%m-%d} .. {window.end:%Y-%m-%d}: reload the roll")
     return solve_run(r.key, r.origin, r.frames, facts, r.window, source, r.pool, r.events, r.event_ids, r.sims,
                      r.candidates, r.verdicts if verdicts is None else verdicts, r.trail, r.outings,
-                     overrides if overrides is not None else r.overrides)
+                     overrides if overrides is not None else r.overrides, r.evidence)
 
 
 class WindowChanged(ValueError):
@@ -422,6 +556,10 @@ def to_json(r: RollRun) -> dict:
         "verified_frames": len(r.verdicts),
         "outings": None if r.outings is None else {"groups": r.outings.groups, "out_of_sequence": r.outings.out_of_sequence, "notes": r.outings.notes},
         "same_outing_pairs": len(r.inputs.same_outing),
+        "engine": "v2" if r.evidence is not None else "v1",
+        "atlas": r.evidence.n_atlas if r.evidence is not None else 0,
+        "readings": [{"frame": x.frame + 1, "kind": x.kind, "text": x.text, "name": x.name, "lat": x.lat, "lon": x.lon} for x in r.readings],
+        "visits": len(r.visits),
         "anchored": r.solution.anchored,
         "log_score": r.solution.log_score,
         "reverse": asdict(r.reverse),
@@ -444,6 +582,9 @@ def to_json(r: RollRun) -> dict:
                 "lon": a.lon,
                 "location": a.location,
                 "location_source": a.location_source,
+                "place_confidence": None if a.place_confidence is None else round(a.place_confidence, 4),
+                "place_uuid": a.place_uuid,
+                "place_name": a.place_name,
                 "clusters": [asdict(c) | {"first": t(c.first), "last": t(c.last)} for c in a.clusters],
                 "truth": t(f.truth),
                 "locked": _locked(f.number, a, r.facts, overrides),

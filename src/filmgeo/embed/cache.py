@@ -36,19 +36,37 @@ class VectorCache:
         start = len(self.keys)
         self.keys.extend(keys)
         self.index.update({k: start + i for i, k in enumerate(keys)})
-        np.save(self.keys_path, np.array(self.keys, dtype=object))
-        np.save(self.vecs_path, self.vecs)
+        # Write beside, then rename: a reader (the review server, an eval script) never sees a
+        # half-written array, and keys and vectors cannot be left at different lengths for long.
+        tmp_k, tmp_v = self.dir / "keys.tmp.npy", self.dir / "vecs.tmp.npy"
+        np.save(tmp_v, self.vecs)
+        np.save(tmp_k, np.array(self.keys, dtype=object))
+        tmp_v.replace(self.vecs_path)
+        tmp_k.replace(self.keys_path)
 
     def get(self, keys: list[str]) -> np.ndarray:
         return np.stack([self.vecs[self.index[k]] for k in keys])
 
 
-def embed_cached(embedder, keys: list[str], paths: list[str], variant: str, batch_size: int = 16) -> np.ndarray:
-    """Embed only what the cache lacks, then return vectors for every requested key."""
+def embed_cached(embedder, keys: list[str], paths: list[str], variant: str, batch_size: int = 16,
+                 chunk: int = 512, progress=None) -> np.ndarray:
+    """Embed only what the cache lacks, then return vectors for every requested key.
+
+    Saved every `chunk` images, so a long run (the place atlas is tens of thousands of photos)
+    that is interrupted keeps what it did. `progress(done, total)` is called after each chunk.
+    """
     cache = VectorCache(variant)
     todo = cache.missing(keys)
     if todo:
         wanted = dict(zip(keys, paths))
-        vecs = embedder.encode([wanted[k] for k in todo], batch_size=batch_size)
-        cache.add(todo, vecs)
+        for i in range(0, len(todo), chunk):
+            part = todo[i : i + chunk]
+            vecs = embedder.encode([wanted[k] for k in part], batch_size=batch_size)
+            if cache.vecs is not None and vecs.shape[1] != cache.vecs.shape[1]:
+                # Not one image of the chunk could be read (`encode` then has no dimension to
+                # report): cache them as zero vectors, which match nothing, and carry on.
+                vecs = np.zeros((len(part), cache.vecs.shape[1]), dtype=cache.vecs.dtype)
+            cache.add(part, vecs)
+            if progress:
+                progress(min(i + chunk, len(todo)), len(todo))
     return cache.get(keys)

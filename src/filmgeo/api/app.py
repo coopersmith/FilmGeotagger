@@ -402,6 +402,8 @@ def create_app(store: Store | None = None, geocoder: Geocoder | None = None) -> 
         fact_fields = (body.when, body.lat, body.lon, body.radius_m, body.place_name, body.same_day_as, body.same_time_as, body.skip, body.note)
         changed = body.unlock or body.anchor is not None or bool(body.reject) or body.no_reference is not None \
             or any(x is not None for x in fact_fields)
+        if changed:
+            o.snapshot = None            # what was confirmed no longer stands; a confirmation in this request freezes the new solve
         if body.confirmed is not None:
             o.confirmed = body.confirmed
         elif changed:

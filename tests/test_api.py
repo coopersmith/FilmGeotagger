@@ -354,9 +354,56 @@ def test_batch_confirm_by_confidence_range_and_roll(client, store):
     on_disk = json.loads((store.assignments_dir / f"{KEY}.json").read_text())
     assert [x["status"] for x in on_disk["frames"]] == ["confirmed", "confirmed", "confirmed", "proposed", "confirmed"]
     assert client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [9]}).status_code == 404
-    # A range confirmation is of those assignments: changing one drops its confirmation only.
+    # A range confirmation is of those assignments: changing one drops its confirmation, and
+    # releases a confirmed neighbour only if the change contradicts what it was confirmed at.
+    before = f
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"anchor": "P05"}).json())
-    assert f[2]["status"] == "proposed" and f[3]["status"] == "confirmed"
+    assert f[2]["status"] == "proposed" and f[1]["status"] == "confirmed" and f[5]["status"] == "confirmed"
+    stays = datetime.fromisoformat(before[3]["time"]) >= at(2, 14, 20)        # frame 3 was confirmed at or after P05's instant
+    assert (f[3]["status"] == "confirmed") == stays
+    if stays:
+        assert f[3]["time"] == before[3]["time"]
+
+
+def test_a_confirmed_frame_is_frozen_until_contradicted(client, store):
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    t3, t4 = f[3]["time"], f[4]["time"]
+    f = frames_by_number(client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [3, 4]}).json())
+    assert f[3]["status"] == "confirmed" and (f[3]["time"], f[4]["time"]) == (t3, t4)
+    snap = RollOverrides.load(KEY, store.overrides_dir).frames[3].snapshot
+    assert snap["time"] == t3 and snap["anchor"] is None
+    # A fact about a neighbour that leaves the confirmed frames possible does not move them...
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"when": at(2, 9, 25).isoformat()}).json())
+    assert (f[3]["time"], f[4]["time"]) == (t3, t4) and f[3]["status"] == "confirmed"
+    # ...and one that rules a confirmed frame out releases it instead of failing the solve.
+    late = at(9, 12, 10).isoformat()
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/2/assign", json={"when": late}).json())
+    assert at(9, 12, 10) <= datetime.fromisoformat(f[2]["time"]) < at(9, 12, 11)
+    assert f[3]["status"] == "proposed" and f[4]["status"] == "proposed"
+    assert datetime.fromisoformat(f[3]["time"]) >= at(9, 12, 10)
+    assert RollOverrides.load(KEY, store.overrides_dir).frames.get(3) is None or not RollOverrides.load(KEY, store.overrides_dir).frames[3].confirmed
+    # Unconfirming thaws: the snapshot goes with the confirmation.
+    client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [5]})
+    assert RollOverrides.load(KEY, store.overrides_dir).frames[5].snapshot["anchor"] == "P09"
+    client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [5], "confirmed": False})
+    assert RollOverrides.load(KEY, store.overrides_dir).frames.get(5) is None
+
+
+def test_confirmations_made_before_snapshots_adopt_the_saved_solve(client, store):
+    # An overrides file from before confirmations froze anything: confirmed, no snapshot.
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    t3 = f[3]["time"]
+    ov = RollOverrides(KEY)
+    ov.frame(3).confirmed = True
+    ov.save(store.overrides_dir)
+    saved = json.loads((store.assignments_dir / f"{KEY}.json").read_text())
+    saved["frames"][2]["status"] = "confirmed"
+    saved["frames"][2]["time"] = at(5, 10, 0).isoformat()                    # what the user saw and confirmed then
+    (store.assignments_dir / f"{KEY}.json").write_text(json.dumps(saved))
+    store.runs.clear()
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    assert f[3]["time"] == at(5, 10, 0).isoformat() != t3 and f[3]["status"] == "confirmed"
+    assert RollOverrides.load(KEY, store.overrides_dir).frames[3].snapshot["time"] == at(5, 10, 0).isoformat()
 
 
 # -- facts and realign ------------------------------------------------------------------------
@@ -605,3 +652,28 @@ def test_an_empty_place_name_clears_it(client):
     assert f[3]["fact"]["place_name"] == "Sakonnet Point"
     f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/3/assign", json={"lat": 41.6, "lon": -71.1, "place_name": ""}).json())
     assert f[3]["fact"]["place_name"] is None and f[3]["lat"] == 41.6
+
+
+def test_a_failed_solve_leaves_confirmations_as_they_were(client, store):
+    client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [3]})
+    before = RollOverrides.load(KEY, store.overrides_dir).frames[3].snapshot
+    # Facts that contradict the confirmed frame *and* each other: the solve refuses.
+    bad = {"frames": {"2": {"when": at(9, 12, 0).isoformat()[:16].replace("T", " ")}, "4": {"when": at(2, 9, 0).isoformat()[:16].replace("T", " ")}}}
+    r = client.put(f"/api/rolls/{KEY}/facts", json=bad)
+    assert r.status_code in (409, 422)
+    live = store.runs[KEY].overrides.frames[3]
+    assert live.confirmed and live.snapshot == before                      # the cached run was not touched
+    assert RollOverrides.load(KEY, store.overrides_dir).frames[3].snapshot == before
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    assert f[3]["status"] == "confirmed" and f[3]["time"] == before["time"]
+
+
+def test_a_frame_confirmed_without_a_place_is_not_given_one_later(client, store):
+    f = frames_by_number(client.get(f"/api/rolls/{KEY}/frames").json())
+    n = next((k for k, x in f.items() if x["lat"] is None and x["source"] == "interpolated"), None)
+    if n is None:
+        pytest.skip("every frame of the fixture roll has a location")
+    client.post(f"/api/rolls/{KEY}/confirm", json={"frames": [n]})
+    other = 2 if n != 2 else 4
+    f = frames_by_number(client.put(f"/api/rolls/{KEY}/frames/{other}/assign", json={"lat": 41.0, "lon": -71.0}).json())
+    assert f[n]["status"] == "confirmed" and f[n]["lat"] is None

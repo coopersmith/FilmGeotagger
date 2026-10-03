@@ -20,6 +20,7 @@ and Lightroom (PLAN.md). Uncertainty lives in `t_lo/t_hi`, never in the written 
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -50,6 +51,9 @@ class Assignment:
     location: str = "none"                  # ok | ambiguous | none
     location_source: str | None = None      # anchor | trail | interpolated
     clusters: list = field(default_factory=list)   # geo.Cluster, for the UI when ambiguous
+    place_confidence: float | None = None   # posterior mass on this place, when the nearest photos chose it (align/locate.py)
+    place_uuid: str | None = None           # the photo that shows the place
+    place_name: str | None = None           # the name read off the frame, when that is what placed it
     offset_disputed: bool = False           # trail points in the interval, or the neighbouring anchors, disagree on offset
     offsets: list[int] = field(default_factory=list)   # the distinct offsets in play when disputed, for the UI to offer
 
@@ -60,6 +64,7 @@ class Solution:
     posterior: np.ndarray            # (n_frames, S)
     log_score: float                 # Viterbi log score of the proposal
     assignments: list[Assignment]
+    places: dict = field(default_factory=dict)      # frame -> locate.PlaceDecision, when there is place evidence
 
     @property
     def anchored(self) -> int:
@@ -197,6 +202,11 @@ def _assign_times(model: RollModel, path: list[int], intervals: list[tuple[datet
             fixed.append(True)
         else:
             mid = s.t_lo + (s.t_hi - s.t_lo) / 2
+            # In an event, beside the photo of it that looks most like the frame: a better
+            # guess at the minute than the middle of the visit.
+            c = model.choices.get((len(times), j))
+            if c is not None and c[4] and model.evidence is not None:
+                mid = model.evidence.photos[c[2]].date
             # Intervals are half-open on the right: a fact "14:05" is [14:05, 14:06), and the
             # written time must not land on the excluded end.
             times.append(min(max(mid, lo), max(lo, hi - timedelta(seconds=1))))
@@ -218,9 +228,87 @@ def _assign_times(model: RollModel, path: list[int], intervals: list[tuple[datet
     return times
 
 
+def posterior_path(model: RollModel, post: np.ndarray) -> list[int]:
+    """The monotone path that collects the most posterior mass, frame by frame.
+
+    Viterbi returns the single likeliest joint assignment, and a single assignment favours
+    whatever is *peaked*: one visit whose photo matches at even odds outbids the forty other
+    visits that share the other half between them, and six frames each chasing their own
+    look-alike day can out-vote three verified anchors. The posterior adds the forty up. This
+    path maximises the sum of the per-frame marginals over the transitions the model allows,
+    so each frame sits where the weight of *all* consistent explanations puts it, and the
+    order of the roll still holds.
+    """
+    n, S = post.shape
+    allowed = np.isfinite(model.transitions)
+    # A verified anchor stands for its occasion: the instant and "somewhere on the same
+    # occasion" answer the question the same way, and split between them neither would win.
+    post = post.copy()
+    for j, s in enumerate(model.states):
+        if s.kind == "anchor":
+            same = [k for k, t in enumerate(model.states) if t.kind == "event" and t.event == s.event]
+            post[s.frame, j] += post[s.frame, same].sum()
+    score = np.where(np.isfinite(model.emissions[0]), post[0], -np.inf)
+    back = np.zeros((n, S), dtype=np.int64)
+    for i in range(1, n):
+        cand = np.where(allowed, score[:, None], -np.inf)
+        back[i] = np.argmax(cand, axis=0)
+        best = cand[back[i], np.arange(S)]
+        score = np.where(np.isfinite(model.emissions[i]), best + post[i], -np.inf)
+    if not np.isfinite(score.max()):
+        return viterbi(model)[0]
+    path = [int(np.argmax(score))]
+    for i in range(n - 1, 0, -1):
+        path.append(int(back[i, path[-1]]))
+    path.reverse()
+    return path
+
+
 def solve(model: RollModel) -> Solution:
     path, score = viterbi(model)
     post = forward_backward(model)
+    places: dict = {}
+    if model.evidence is not None:
+        # Place first (align/locate.py), then the time within it. The overwhelming votes are
+        # decided and held; the roll is solved again; the remaining frames take the heaviest
+        # place that leaves possible, and are held too; the last solve gives the times.
+        from filmgeo.align import locate
+
+        def narrowed(m: RollModel, decided: dict) -> RollModel | None:
+            em = m.emissions.copy()
+            changed = False
+            for i, d in decided.items():
+                if not d.decided or i in m.skipped:
+                    continue
+                # Its own anchors stay open: a verified photo may still be where it is.
+                keep = locate.hosts(m, i, d) + [j for j, s in enumerate(m.states) if s.kind == "anchor" and s.frame == i]
+                row = np.full(em.shape[1], NEG)
+                row[keep] = em[i, keep]
+                if np.isfinite(row).any() and not np.array_equal(np.isfinite(row), np.isfinite(em[i])):
+                    em[i], changed = row, True
+            if not changed:
+                return m
+            out = dataclasses.replace(m, emissions=em)
+            try:
+                viterbi(out)
+            except ValueError:
+                return None                               # these places contradict the order
+            return out
+
+        base = model
+        sure = locate.decide(base, None)
+        held = narrowed(base, sure)
+        if held is None:
+            held, sure = base, {i: dataclasses.replace(d, decided=False) for i, d in sure.items()}
+        places = locate.decide(held, forward_backward(held), sure)
+        final = narrowed(base, places)
+        if final is None:
+            final, places = held, sure                    # exactly what the solved model was held to
+        model = final
+        path, _ = viterbi(model)
+        post = forward_backward(model)
+        if model.params.decode == "posterior":
+            path = posterior_path(model, post)
     intervals = _intervals(model, path, post)
     times = _assign_times(model, path, intervals)
     out_js = model.outside
@@ -245,14 +333,25 @@ def solve(model: RollModel) -> Solution:
                     and (t.kind == "event" or (t.kind == "anchor" and t.frame == i))]
         else:
             same = [j]
+        confidence = float(post[i, same].sum())
+        c = model.choices.get((i, j))
+        if model.evidence is not None and s.kind == "event" and c is not None and c[4] and s.event is not None:
+            # An unverified frame beside a photo of its visit: how often that is the right
+            # visit was measured, and the posterior — forty other visits to the same house at
+            # a seventh of the support each — does not say it (align/evidence.py).
+            from filmgeo.align.evidence import occasion_confidence
+
+            rivals = [t.event for (k, jj), cc in model.choices.items() if k == i and (t := model.states[jj]).kind == "event"
+                      and t.event is not None and abs(cc[0] - c[0]) < 1e-9 and abs(cc[1] - c[1]) < 1e-9]
+            confidence = max(confidence, occasion_confidence(model.evidence.frames[i], model.evidence.params, s.event, rivals))
         assignments.append(
             Assignment(
                 frame=i, state=j, source=source, time=times[i], t_lo=lo, t_hi=hi,
-                confidence=float(post[i, same].sum()), outside_mass=float(post[i, out_js].sum()),
+                confidence=confidence, outside_mass=float(post[i, out_js].sum()),
                 anchor_uuid=s.uuid, tzoffset=s.tzoffset, lat=s.lat, lon=s.lon, event=s.event,
             )
         )
-    return Solution(path, post, score, assignments)
+    return Solution(path, post, score, assignments, places)
 
 
 def null_score(model: RollModel) -> float:
