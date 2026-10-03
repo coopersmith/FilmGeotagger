@@ -52,6 +52,7 @@ class Assignment:
     clusters: list = field(default_factory=list)   # geo.Cluster, for the UI when ambiguous
     place_confidence: float | None = None   # posterior mass on this place, when the nearest photos chose it (align/locate.py)
     place_uuid: str | None = None           # the photo that shows the place
+    place_name: str | None = None           # the name read off the frame, when that is what placed it
     offset_disputed: bool = False           # trail points in the interval, or the neighbouring anchors, disagree on offset
     offsets: list[int] = field(default_factory=list)   # the distinct offsets in play when disputed, for the UI to offer
 

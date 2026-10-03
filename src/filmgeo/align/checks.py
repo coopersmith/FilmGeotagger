@@ -47,10 +47,12 @@ class RollInputs:
     params: AlignParams | None = None
     event_weather: dict[int, str] | None = None
     evidence: "Evidence | None" = None
+    visits: list = field(default_factory=list)
 
     def build(self) -> RollModel:
         return build_model(self.window, self.events, self.n_frames, self.anchors, self.sims, self.event_ids,
-                           self.clues, self.constraints, self.same_outing, self.params, self.event_weather, self.evidence)
+                           self.clues, self.constraints, self.same_outing, self.params, self.event_weather, self.evidence,
+                           self.visits)
 
     def reversed(self) -> "RollInputs":
         n = self.n_frames
@@ -68,6 +70,7 @@ class RollInputs:
             params=self.params,
             event_weather=self.event_weather,
             evidence=None if self.evidence is None else dataclasses.replace(self.evidence, frames=list(reversed(self.evidence.frames))),
+            visits=self.visits,
         )
 
 

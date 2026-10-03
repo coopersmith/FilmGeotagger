@@ -58,6 +58,7 @@ class EvidenceParams:
     occasion_mode: str = "best"    # see FrameEvidence.in_event
     stay_discount: float = 0.6     # at the place between two bursts of photos there: nothing was photographed
     offtrail_discount: float = 0.6 # at a place the phone did not record this time, reachable inside a gap
+    visit_weight: float = 0.5      # at a recorded stop there (a check-in, a timeline visit) with no photos of it
     # What a state with nothing to offer is worth to a frame that does resemble its photos:
     # emissions are (1 - q) * floor + q * support, never below this.
     epsilon: float = 0.003
@@ -109,7 +110,13 @@ class FrameEvidence:
         if not m.any():
             return 0.0, None
         k = int(np.argmax(m))
-        return (float(self.w[k] / self.w[0]) if mode == "best" else float(self.w[m].sum())), int(self.idx[k])
+        if mode != "best":
+            return float(self.w[m].sum()), int(self.idx[k])
+        # Against the best photo *of the window*: an atlas photo of the same spot from another
+        # year may be the nearest of all, and says nothing about which visit this was.
+        inwin = self.event >= 0
+        ref = self.w[int(np.argmax(inwin))]
+        return float(self.w[k] / ref), int(self.idx[k])
 
 
 @dataclass
@@ -155,6 +162,35 @@ def reachable_atlas(pool: list[Asset], atlas: list[Asset], reach_m: float) -> li
             i, j = key(a.lat, a.lon)
             near.update((i + di, j + dj) for di in (-1, 0, 1) for dj in (-1, 0, 1))
     return [a for a in atlas if a.lat is not None and key(a.lat, a.lon) in near]
+
+
+READING_PREFIX = "reading:"
+
+
+def add_readings(ev: Evidence, readings: list) -> Evidence:
+    """Fold places read off the frames (`align.readings`) into the vote.
+
+    A reading enters its frame's list as one more voter with the reading's confidence as its
+    weight — the photos keep the rest — standing at the named place, belonging to no event.
+    The frame's vote is then worth at least that confidence: a sign is evidence even when not
+    one photo resembles the frame.
+    """
+    from datetime import datetime, timezone
+
+    for r in readings:
+        if not (0 <= r.frame < len(ev.frames)):
+            continue
+        fe = ev.frames[r.frame]
+        ev.photos.append(Asset(f"{READING_PREFIX}{r.kind}:{r.name}", r.name, datetime(1970, 1, 1, tzinfo=timezone.utc), None, r.lat, r.lon))
+        c = r.confidence
+        fe.idx = np.append(fe.idx, len(ev.photos) - 1)
+        fe.w = np.append(fe.w * (1 - c), c)
+        fe.sims = np.append(fe.sims, 0.0)
+        fe.lat, fe.lon = np.append(fe.lat, r.lat), np.append(fe.lon, r.lon)
+        fe.event = np.append(fe.event, -1)
+        fe.q = 1 - (1 - fe.q) * (1 - c)
+        fe.places = _hypotheses(fe, ev.n_pool, ev.params.radius_m)
+    return ev
 
 
 def build(frame_vecs: np.ndarray, pool: list[Asset], pool_vecs: np.ndarray, event_ids: list[int],

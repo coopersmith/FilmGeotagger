@@ -12,11 +12,12 @@ own (`place_confidence`), apart from how sure the time is (`confidence`).
 
 from __future__ import annotations
 
+from filmgeo.align.evidence import READING_PREFIX
 from filmgeo.align.model import RollModel
 from filmgeo.align.solve import Solution
 from filmgeo.events import haversine_m
 
-PLACE_MIN = 0.5          # posterior mass a place needs before it is written as the location
+PLACE_MIN = 0.6          # (vote quality x posterior mass) a place needs before it is written as the location
 SAME_PLACE_M = 300.0
 
 
@@ -58,9 +59,16 @@ def locate(model: RollModel, solution: Solution, pinned: set[int] | None = None,
             mine = ev.photos[c[2]]
             if mine.lat is not None and haversine_m((mine.lat, mine.lon), (photo.lat, photo.lon)) <= SAME_PLACE_M:
                 photo = mine
+        # The posterior says how the states' offers divide; whether the offers mean anything is
+        # the frame's own q — a frame whose nearest photo is a look-alike has places to offer
+        # and no reason to believe them. Both must hold before a pin is written.
+        mass *= ev.frames[i].q
         a.place_confidence = mass
         if mass >= place_min:
             a.lat, a.lon = photo.lat, photo.lon
-            a.location, a.location_source, a.clusters = "ok", "visual", []
-            a.place_uuid = photo.uuid
+            a.location, a.clusters = "ok", []
+            if photo.uuid.startswith(READING_PREFIX):       # a name read off the frame, not a photo
+                a.location_source, a.place_name = "reading", photo.filename
+            else:
+                a.location_source, a.place_uuid = "visual", photo.uuid
     return solution

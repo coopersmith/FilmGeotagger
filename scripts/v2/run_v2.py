@@ -18,6 +18,7 @@ from filmgeo.align.locate import locate
 from filmgeo.align.model import AlignParams
 from filmgeo.align.pipeline import anchors_from_verdicts, clues_from_verdicts
 from filmgeo.align.solve import solve
+from filmgeo.align.visits import from_trail as visits_from
 from filmgeo.embed.cache import VectorCache
 from filmgeo.geo import place
 from filmgeo.photos import library
@@ -50,20 +51,25 @@ def atlas_for(r, use_atlas: bool, ep):
     return [a for a, k in zip(cand, ok) if k], vecs[ok]
 
 
-def solve_v2(r, verdicts=True, use_atlas=False, ep=None, ap=None, place_min=0.5):
+def solve_v2(r, verdicts=True, use_atlas=False, ep=None, ap=None, place_min=0.6, readings=None, layers=False):
     ep = ep or evmod.EvidenceParams()
     c = cache()
     fv = c.get([f.key for f in r.frames])
     pv = c.get([a.uuid for a in r.pool])
     atlas, av = atlas_for(r, use_atlas, ep)
     ev = evmod.build(fv, r.pool, pv, r.event_ids, atlas, av, ep)
+    if readings is None:
+        readings = verdicts                  # readings come from the verifier's clues: no verdicts, no readings
+    if readings:
+        from filmgeo.align.readings import from_verdicts
+        evmod.add_readings(ev, from_verdicts(r.verdicts, r.pool, offline=True))
     facts = dataclasses.replace(r.facts, frames={})
     n = len(r.frames)
     vd = r.verdicts if verdicts else {}
     anchors = anchors_from_verdicts(vd, r.pool, r.event_ids, r.sims)
     inputs = RollInputs(r.window, r.events, n, anchors, r.sims, r.event_ids, clues_from_verdicts(vd, n),
                         UserFacts(facts).constraints(), r.outings.same_outing_pairs(n) if (r.outings and verdicts) else set(),
-                        params=ap, evidence=ev)
+                        params=ap, evidence=ev, visits=visits_from(r.trail) if layers else [])
     model = inputs.build()
     sol = solve(model)
     place(sol, [p for p in r.trail if p.source != "user_facts"], {})

@@ -170,6 +170,8 @@ class State:
     occ_lo: datetime | None = None # anchor: the occasion's span — what the verdict actually vouches for
     occ_hi: datetime | None = None
     stay: bool = False             # gap between two bursts of photos at one place: the place is known, the hour is not
+    visit: bool = False            # a recorded stop with no photos (a check-in, a timeline visit): place and hour known
+    venue: str | None = None       # the visit's venue name, when the source has one
     # gap: where the trail was before and after, and for how long it is silent — how far a
     # place off the trail can be and still be reached inside it. (lat, lon) or None per end.
     reach_from: tuple[float, float] | None = None
@@ -259,7 +261,8 @@ def _day_pieces(lo: datetime, hi: datetime) -> list[tuple[datetime, datetime]]:
 STAY_RADIUS_M = 300.0
 
 
-def build_states(window: Window, events: list[Event], anchors: list[Anchor], stay_radius_m: float = STAY_RADIUS_M) -> list[State]:
+def build_states(window: Window, events: list[Event], anchors: list[Anchor], stay_radius_m: float = STAY_RADIUS_M,
+                 visits: list | None = None) -> list[State]:
     """One state per event, one gap state per calendar day between events, anchors with heads and tails.
 
     Gaps are cut at midnight so a state never spans two days: that keeps the joint-day
@@ -279,15 +282,42 @@ def build_states(window: Window, events: list[Event], anchors: list[Anchor], sta
         hours = (hi - lo).total_seconds() / 3600.0
         return [State("gap", x, y, lat, lon, stay=stay, reach_from=a, reach_to=b, reach_hours=hours) for x, y in _day_pieces(lo, hi)]
 
+    # The timeline's pieces in order: photo events, and recorded visits (align/visits.py) where
+    # the photos are silent or say somewhere else. A visit inside an event at another place
+    # splits the event round it — a five-minute stop at the beach inside a morning at home.
+    pieces: list[tuple[datetime, datetime, Event | None, object | None]] = []
     for e in events:
         lo, hi = max(e.start, window.start), min(e.end, window.end)
-        if hi < lo:
+        if hi >= lo:
+            pieces.append((lo, hi, e, None))
+    for v in sorted(visits or [], key=lambda v: v.t_lo):
+        lo, hi = max(v.t_lo, window.start), min(v.t_hi, window.end)
+        if hi <= lo:
             continue
-        loc = (e.lat, e.lon) if e.lat is not None else None
+        clash = [k for k, (a, b, e, w) in enumerate(pieces) if a < hi and lo < b]
+        if not clash:
+            pieces.append((lo, hi, None, v))
+            continue
+        if len(clash) > 1 or pieces[clash[0]][3] is not None:
+            continue                                  # spans several pieces, or another visit: the photos have it
+        a, b, e, _ = pieces[clash[0]]
+        if e.lat is not None and haversine_m((e.lat, e.lon), (v.lat, v.lon)) <= stay_radius_m:
+            continue                                  # the photos already say this place
+        if not (a < lo and hi < b):
+            continue
+        pieces[clash[0] : clash[0] + 1] = [(a, lo, e, None), (lo, hi, None, v), (hi, b, e, None)]
+    pieces.sort(key=lambda x: x[0])
+
+    for lo, hi, e, v in pieces:
+        loc = (e.lat, e.lon) if (e is not None and e.lat is not None) else ((v.lat, v.lon) if v is not None else None)
         if lo > prev_end:
             states.extend(gaps(prev_end, lo, prev_loc, loc or prev_loc))
-        states.append(State("event", lo, hi, e.lat, e.lon, event=e.index))
-        prev_end = hi
+        if e is not None:
+            states.append(State("event", lo, hi, e.lat, e.lon, event=e.index))
+        else:
+            states.append(State("gap", lo, hi, v.lat, v.lon, stay=True, visit=True, venue=v.label,
+                                reach_from=loc, reach_to=loc, reach_hours=(hi - lo).total_seconds() / 3600.0))
+        prev_end = max(prev_end, hi)
         prev_loc = loc or prev_loc
     if window.end > prev_end:
         states.extend(gaps(prev_end, window.end, prev_loc, None))
@@ -371,7 +401,8 @@ def _gap_support(s: State, fe, p) -> tuple[float, tuple | None]:
     if s.stay:
         place, photo = fe.near(s.lat, s.lon, p.radius_m)
         if photo is not None:
-            best_support = place * p.other_visit * p.stay_discount
+            # A recorded stop is worth more than a silent stay: the phone *was* there then.
+            best_support = place * (p.visit_weight if s.visit else p.other_visit * p.stay_discount)
             best_choice = (s.lat, s.lon, photo, place, False)
     for h in fe.places:
         support = h.mass * p.other_visit * p.offtrail_discount
@@ -654,11 +685,12 @@ def build_model(
     params: AlignParams | None = None,
     event_weather: dict[int, str] | None = None,
     evidence: Evidence | None = None,
+    visits: list | None = None,
 ) -> RollModel:
     params = params or AlignParams()
     anchors = [a for a in (anchors or []) if a.locked or a.confidence >= params.min_anchor_confidence]
     constraints = list(constraints or []) + anchored_days(anchors, constraints or []) + anchored_moments(anchors, constraints or [])
-    states = build_states(window, events, anchors)
+    states = build_states(window, events, anchors, visits=visits)
     choices: dict = {}
     em, skipped = build_emissions(states, n_frames, params, anchors, events, sims, event_ids, clues, constraints, window, event_weather,
                                   evidence, choices)

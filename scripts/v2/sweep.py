@@ -25,3 +25,19 @@ if __name__ == "__main__":
             for rho in (0.05, 0.1, 0.15, 0.25, 0.4):
                 res, _ = run("", quiet=True, verdicts=verdicts, use_atlas=atlas, ep=EvidenceParams(other_visit=rho))
                 line(f"claude={verdicts!s:5} other_visit={rho}", res)
+    if which == "pmin":
+        for verdicts in (False, True):
+            for pm in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8):
+                res, _ = run("", quiet=True, verdicts=verdicts, use_atlas=atlas, place_min=pm)
+                line(f"claude={verdicts!s:5} place_min={pm}", res)
+    if which == "atlas":
+        for verdicts in (False, True):
+            for use in (False, True):
+                res, _ = run("", quiet=True, verdicts=verdicts, use_atlas=use)
+                line(f"claude={verdicts!s:5} atlas={use}", res)
+    if which == "main":
+        res, _ = run("", quiet=True, verdicts=False, use_atlas=atlas); line("v2 free", res)
+        res, _ = run("", quiet=True, verdicts=True, readings=False, use_atlas=atlas); line("v2 + Claude verdicts, no readings", res)
+        res, _ = run("", quiet=True, verdicts=True, use_atlas=atlas); line("v2 + Claude verdicts + readings", res)
+        res, _ = run("", quiet=True, verdicts=False, readings=True, use_atlas=atlas); line("v2 free + readings only (a read-the-frame call)", res)
+        res, _ = run("", quiet=True, verdicts=True, use_atlas=atlas, layers=True); line("v2 + Claude + readings + optional layers (check-ins)", res)
